@@ -25,10 +25,14 @@ class DatasetUploadForm(forms.ModelForm):
             )
 
         try:
-            head = f.read(1024).decode("utf-8-sig")
+            raw_head = f.read(1024)
             f.seek(0)
+            try:
+                head = raw_head.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                head = raw_head.decode("latin-1")
         except UnicodeDecodeError:
-            raise forms.ValidationError("File is not valid UTF-8 encoded text.")
+            raise forms.ValidationError("File encoding is not supported.")
 
         if not any(sep in head for sep in (",", ";", "\t")):
             raise forms.ValidationError("File does not appear to contain CSV-style delimiters.")
@@ -36,8 +40,29 @@ class DatasetUploadForm(forms.ModelForm):
         return f
 
     def save(self, commit=True):
+        from .services.data import read_csv_safely, extract_metadata
+
         instance = super().save(commit=False)
         instance.original_name = self.cleaned_data["file"].name
+
+        # Save first so FileField is written to disk and file.path is available
         if commit:
             instance.save()
+
+        try:
+            df = read_csv_safely(instance.file)
+            meta = extract_metadata(df)
+            instance.n_rows = meta["n_rows"]
+            instance.n_columns = meta["n_columns"]
+            instance.columns = meta["columns"]
+            instance.head_preview = meta["head"]
+            instance.target_name = meta["target_name"]
+            instance.problem_type = meta["problem_type"]
+            instance.parse_error = None
+        except ValueError as e:
+            instance.parse_error = str(e)
+
+        if commit:
+            instance.save()
+
         return instance

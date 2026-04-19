@@ -195,3 +195,117 @@
     text-align: center;
     padding: 20px 0;
 }
+
+/* ── Target column badge ── */
+.p1-badge {
+    background-color: #275CB2;
+    color: white;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* ── Horizontal scroll for wide preview tables ── */
+.p1-table-scroll {
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+/* ── Code styling for column names and cell values ── */
+.p1-table code,
+.p1-detail-table code {
+    background-color: #f4f7fc;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 14px;
+    font-family: monospace;
+}
+
+/* ── Row number column ── */
+.p1-row-num {
+    color: #999;
+    font-size: 13px;
+    text-align: right;
+    user-select: none;
+    min-width: 40px;
+}
+
+/* ── Sortable column headers ── */
+.p1-th-rownum {
+    width: 40px;
+}
+
+.p1-th-sortable {
+    white-space: nowrap;
+}
+
+.p1-th-active {
+    background-color: #1e4a9a !important;
+}
+
+.p1-sort-link {
+    color: white;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.p1-sort-link:hover {
+    text-decoration: underline;
+}
+
+.p1-sort-indicator {
+    font-size: 11px;
+    opacity: 0.85;
+}
+
+/* ── Pagination controls ── */
+.p1-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.p1-page-btn {
+    display: inline-block;
+    padding: 6px 14px;
+    border: 1px solid #275CB2;
+    border-radius: 4px;
+    color: #275CB2;
+    text-decoration: none;
+    font-size: 14px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: white;
+}
+
+.p1-page-btn:hover {
+    background-color: #275CB2;
+    color: white;
+}
+
+.p1-page-btn--disabled {
+    border-color: #ccc;
+    color: #ccc;
+    cursor: default;
+    pointer-events: none;
+}
+
+.p1-page-current {
+    font-size: 14px;
+    color: #555;
+    padding: 6px 10px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* ── Page info subtitle next to section title ── */
+.p1-page-info {
+    font-size: 14px;
+    color: #777;
+    font-weight: normal;
+    margin-left: 8px;
+}

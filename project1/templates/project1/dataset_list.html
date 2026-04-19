@@ -11,6 +11,8 @@
                     <th>Name</th>
                     <th>Uploaded</th>
                     <th>Size</th>
+                    <th>Rows</th>
+                    <th>Type</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -20,6 +22,8 @@
                     <td>{{ dataset.original_name }}</td>
                     <td>{{ dataset.uploaded_at|date:"Y-m-d H:i" }}</td>
                     <td>{{ dataset.filesize_kb }} KB</td>
+                    <td>{{ dataset.n_rows|default:"—" }}</td>
+                    <td>{{ dataset.get_problem_type_display|default:"—" }}</td>
                     <td class="p1-actions">
                         <a href="{% url 'project1:dataset_detail' dataset.pk %}" class="p1-link">View</a>
                         <a href="{% url 'project1:dataset_delete' dataset.pk %}" class="p1-link p1-link--danger">Delete</a>

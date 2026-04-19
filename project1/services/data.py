@@ -40,7 +40,7 @@ def humanize_dtype(dtype) -> str:
         return "boolean"
     if name.startswith("datetime"):
         return "datetime"
-    if name == "object":
+    if name in ("object", "str", "string"):
         return "string"
     return name
 

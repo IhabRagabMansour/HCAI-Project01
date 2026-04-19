@@ -4,6 +4,7 @@
 
 {% block project1_content %}
 <div class="p1-section">
+    <h2 class="p1-section-title">File Info</h2>
     <table class="p1-detail-table">
         <tr>
             <th>Filename</th>
@@ -22,10 +23,134 @@
             <td><a href="{{ dataset.file.url }}" class="p1-link" download>Download file</a></td>
         </tr>
     </table>
+</div>
 
-    <div class="p1-action-row">
-        <a href="{% url 'project1:dataset_list' %}"><button type="button">Back to list</button></a>
-        <a href="{% url 'project1:dataset_delete' dataset.pk %}"><button type="button" class="btn-danger">Delete</button></a>
+{% if dataset.parse_error %}
+    <div class="p1-section">
+        <div class="p1-msg p1-msg--error">
+            <strong>Parse error:</strong> {{ dataset.parse_error }}
+        </div>
     </div>
+
+{% elif dataset.is_parsed %}
+    <div class="p1-section">
+        <h2 class="p1-section-title">Summary</h2>
+        <table class="p1-detail-table">
+            <tr>
+                <th>Rows</th>
+                <td>{{ dataset.n_rows }}</td>
+            </tr>
+            <tr>
+                <th>Columns</th>
+                <td>{{ dataset.n_columns }}</td>
+            </tr>
+            <tr>
+                <th>Target column</th>
+                <td><code>{{ dataset.target_name }}</code></td>
+            </tr>
+            <tr>
+                <th>Detected type</th>
+                <td>{{ dataset.get_problem_type_display }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="p1-section">
+        <h2 class="p1-section-title">Columns</h2>
+        <table class="p1-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Role</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for col in dataset.columns %}
+                <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td><code>{{ col.name }}</code></td>
+                    <td>{{ col.dtype }}</td>
+                    <td>
+                        {% if col.name == dataset.target_name %}
+                            <span class="p1-badge">target</span>
+                        {% else %}
+                            feature
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj %}
+    <div class="p1-section" id="data-section">
+        <h2 class="p1-section-title">
+            Data
+            <span class="p1-page-info">
+                (rows {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ dataset.n_rows }})
+            </span>
+        </h2>
+
+        <div class="p1-table-scroll">
+            <table class="p1-table">
+                <thead>
+                    <tr>
+                        <th class="p1-th-rownum">#</th>
+                        {% for header in sort_headers %}
+                            <th class="p1-th-sortable{% if header.active %} p1-th-active{% endif %}">
+                                <a href="{{ header.url }}" class="p1-sort-link">
+                                    {{ header.name }}
+                                    {% if header.indicator %}
+                                        <span class="p1-sort-indicator">{{ header.indicator }}</span>
+                                    {% endif %}
+                                </a>
+                            </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in page_obj %}
+                    <tr>
+                        <td class="p1-row-num">{{ forloop.counter0|add:page_obj.start_index }}</td>
+                        {% for cell in row %}
+                            <td>{{ cell|default:"—" }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="p1-pagination">
+            {% if page_obj.has_previous %}
+                <a href="?page=1#data-section" class="p1-page-btn">&laquo; First</a>
+                <a href="?page={{ page_obj.previous_page_number }}#data-section" class="p1-page-btn">&lsaquo; Prev</a>
+            {% else %}
+                <span class="p1-page-btn p1-page-btn--disabled">&laquo; First</span>
+                <span class="p1-page-btn p1-page-btn--disabled">&lsaquo; Prev</span>
+            {% endif %}
+
+            <span class="p1-page-current">
+                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+            </span>
+
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}#data-section" class="p1-page-btn">Next &rsaquo;</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}#data-section" class="p1-page-btn">Last &raquo;</a>
+            {% else %}
+                <span class="p1-page-btn p1-page-btn--disabled">Next &rsaquo;</span>
+                <span class="p1-page-btn p1-page-btn--disabled">Last &raquo;</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+{% endif %}
+
+<div class="p1-action-row">
+    <a href="{% url 'project1:dataset_list' %}"><button type="button">Back to list</button></a>
+    <a href="{% url 'project1:dataset_delete' dataset.pk %}"><button type="button" class="btn-danger">Delete</button></a>
 </div>
 {% endblock %}
