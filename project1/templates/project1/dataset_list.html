@@ -1,13 +1,10 @@
 {% extends 'project1/base.html' %}
 
-{% block page_title %}{{ title }}{% endblock %}
+{% block page_title %}Datasets{% endblock %}
 
 {% block project1_content %}
-<p class="centered-text">{{ description }}</p>
-
 <div class="p1-section">
-    <h2 class="p1-section-title">Recent Datasets</h2>
-    {% if recent_datasets %}
+    {% if datasets %}
         <table class="p1-table">
             <thead>
                 <tr>
@@ -18,25 +15,24 @@
                 </tr>
             </thead>
             <tbody>
-                {% for dataset in recent_datasets %}
+                {% for dataset in datasets %}
                 <tr>
                     <td>{{ dataset.original_name }}</td>
                     <td>{{ dataset.uploaded_at|date:"Y-m-d H:i" }}</td>
                     <td>{{ dataset.filesize_kb }} KB</td>
-                    <td>
+                    <td class="p1-actions">
                         <a href="{% url 'project1:dataset_detail' dataset.pk %}" class="p1-link">View</a>
+                        <a href="{% url 'project1:dataset_delete' dataset.pk %}" class="p1-link p1-link--danger">Delete</a>
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        <div class="button-container" style="margin-top: 16px;">
-            <a href="{% url 'project1:dataset_list' %}"><button type="button">View All Datasets</button></a>
-        </div>
     {% else %}
         <p class="centered-text">No datasets uploaded yet.</p>
     {% endif %}
-    <div class="button-container" style="margin-top: 12px;">
+
+    <div class="button-container" style="margin-top: 20px;">
         <a href="{% url 'project1:dataset_upload' %}"><button type="button">Upload a Dataset</button></a>
     </div>
 </div>

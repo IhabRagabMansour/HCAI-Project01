@@ -6,10 +6,25 @@
 {% endblock %}
 
 {% block content %}
-<div class="box">
+<div class="box p1-box">
     <div class="title-container">
         <div class="title">{% block page_title %}Project 1{% endblock %}</div>
     </div>
+
+    <nav class="p1-nav">
+        <a href="{% url 'project1:index' %}">Home</a>
+        <a href="{% url 'project1:dataset_list' %}">Datasets</a>
+        <a href="{% url 'project1:dataset_upload' %}">Upload</a>
+    </nav>
+
+    {% if messages %}
+    <ul class="p1-messages">
+        {% for message in messages %}
+            <li class="p1-msg p1-msg--{{ message.tags }}">{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
     <div class="main-text">
         {% block project1_content %}{% endblock %}
     </div>

@@ -1,0 +1,31 @@
+{% extends 'project1/base.html' %}
+
+{% block page_title %}{{ dataset.original_name }}{% endblock %}
+
+{% block project1_content %}
+<div class="p1-section">
+    <table class="p1-detail-table">
+        <tr>
+            <th>Filename</th>
+            <td>{{ dataset.original_name }}</td>
+        </tr>
+        <tr>
+            <th>Uploaded</th>
+            <td>{{ dataset.uploaded_at|date:"Y-m-d H:i" }}</td>
+        </tr>
+        <tr>
+            <th>Size</th>
+            <td>{{ dataset.filesize_kb }} KB</td>
+        </tr>
+        <tr>
+            <th>Download</th>
+            <td><a href="{{ dataset.file.url }}" class="p1-link" download>Download file</a></td>
+        </tr>
+    </table>
+
+    <div class="p1-action-row">
+        <a href="{% url 'project1:dataset_list' %}"><button type="button">Back to list</button></a>
+        <a href="{% url 'project1:dataset_delete' dataset.pk %}"><button type="button" class="btn-danger">Delete</button></a>
+    </div>
+</div>
+{% endblock %}

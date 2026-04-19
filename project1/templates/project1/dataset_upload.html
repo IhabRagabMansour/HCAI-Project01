@@ -1,0 +1,26 @@
+{% extends 'project1/base.html' %}
+
+{% block page_title %}Upload Dataset{% endblock %}
+
+{% block project1_content %}
+<form method="post" enctype="multipart/form-data" class="p1-form">
+    {% csrf_token %}
+
+    <div class="p1-form-group">
+        <label for="{{ form.file.id_for_label }}" class="p1-label">{{ form.file.label }}</label>
+        {{ form.file }}
+        {% if form.file.errors %}
+            <ul class="p1-field-errors">
+                {% for error in form.file.errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+        <p class="p1-hint">CSV format only · max 5 MB · first row must be column headers · last column is the target</p>
+    </div>
+
+    <div class="button-container">
+        <button type="submit">Upload</button>
+    </div>
+</form>
+{% endblock %}
