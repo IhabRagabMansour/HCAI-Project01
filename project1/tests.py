@@ -552,3 +552,69 @@ class ExperimentCreateViewTest(TestCase):
         response = self.client.get(f"/project1/experiments/{exp.pk}/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, exp.name)
+
+
+# ── Stage 5c: experiments list, delete, and warnings ───────────────────────
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ExperimentListAndDeleteTest(TestCase):
+    def setUp(self):
+        csv = b"a,b,target\n1.0,2.0,0\n3.0,4.0,1\n5.0,6.0,0\n7.0,8.0,1\n9.0,10.0,0\n"
+        uploaded = SimpleUploadedFile("exp2.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        self.dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "Exp Alpha",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        from .models import Experiment
+        self.experiment = Experiment.objects.first()
+
+    def test_dataset_detail_shows_experiments_section(self):
+        response = self.client.get(f"/project1/datasets/{self.dataset.pk}/")
+        self.assertContains(response, "Experiments")
+
+    def test_dataset_detail_shows_experiment_name(self):
+        response = self.client.get(f"/project1/datasets/{self.dataset.pk}/")
+        self.assertContains(response, "Exp Alpha")
+
+    def test_dataset_detail_shows_new_experiment_button(self):
+        response = self.client.get(f"/project1/datasets/{self.dataset.pk}/")
+        self.assertContains(response, "New Experiment")
+
+    def test_delete_confirm_page_returns_200(self):
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/delete/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Exp Alpha")
+
+    def test_delete_post_removes_experiment(self):
+        from .models import Experiment
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/delete/")
+        self.assertEqual(Experiment.objects.count(), 0)
+
+    def test_delete_post_redirects_to_dataset(self):
+        response = self.client.post(f"/project1/experiments/{self.experiment.pk}/delete/")
+        self.assertRedirects(response, f"/project1/datasets/{self.dataset.pk}/")
+
+    def test_experiment_detail_shows_delete_button(self):
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/")
+        self.assertContains(response, "delete")
+
+    def test_multiple_experiments_all_listed(self):
+        from .models import Experiment
+        self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "Exp Beta",
+            "missing_strategy": "drop",
+            "categorical_encoding": "label",
+            "scaling": "minmax",
+            "test_size": "0.3",
+            "random_seed": "7",
+        })
+        self.assertEqual(Experiment.objects.count(), 2)
+        response = self.client.get(f"/project1/datasets/{self.dataset.pk}/")
+        self.assertContains(response, "Exp Alpha")
+        self.assertContains(response, "Exp Beta")

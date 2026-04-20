@@ -223,6 +223,56 @@
     {% endif %}
 {% endif %}
 
+{% if dataset.is_parsed %}
+<div class="p1-section" id="experiments-section">
+    <h2 class="p1-section-title">
+        Experiments
+        {% if experiments %}<span class="p1-page-info">({{ experiments|length }})</span>{% endif %}
+    </h2>
+
+    {% if experiments %}
+    <table class="p1-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Split</th>
+                <th>Encoding</th>
+                <th>Scaling</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for exp in experiments %}
+            <tr>
+                <td>{{ exp.name }}</td>
+                <td>{{ exp.test_size_pct }}% test</td>
+                <td>{{ exp.get_categorical_encoding_display }}</td>
+                <td>{{ exp.get_scaling_display }}</td>
+                <td>
+                    {% if exp.is_prepared %}
+                        <span class="p1-badge">Prepared</span>
+                    {% elif exp.prepare_error %}
+                        <span class="p1-badge p1-badge--error">Error</span>
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td>{{ exp.created_at|date:"Y-m-d H:i" }}</td>
+                <td>
+                    <a href="{% url 'project1:experiment_detail' exp.pk %}" class="p1-link">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="p1-empty-msg">No experiments yet. Click <strong>+ New Experiment</strong> to get started.</p>
+    {% endif %}
+</div>
+{% endif %}
+
 <div class="p1-action-row">
     <a href="{% url 'project1:dataset_list' %}"><button type="button">Back to list</button></a>
     {% if dataset.is_parsed %}

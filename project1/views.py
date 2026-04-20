@@ -120,6 +120,8 @@ def dataset_detail(request, pk):
             "active": name == sort_col,
         })
 
+    experiments = list(dataset.experiments.all()) if dataset.is_parsed else []
+
     return render(request, "project1/dataset_detail.html", {
         "dataset": dataset,
         "page_obj": page_obj,
@@ -127,6 +129,7 @@ def dataset_detail(request, pk):
         "sort_headers": sort_headers,
         "sort_col": sort_col,
         "sort_order": sort_order,
+        "experiments": experiments,
         "numeric_cols": numeric_cols,
         "histogram_cols": histogram_cols,
         "class_names": class_names,
@@ -251,3 +254,14 @@ def experiment_detail(request, pk):
         "experiment": experiment,
         "dataset": experiment.dataset,
     })
+
+
+def experiment_delete(request, pk):
+    experiment = get_object_or_404(Experiment, pk=pk)
+    if request.method == "POST":
+        name = experiment.name
+        dataset_pk = experiment.dataset_id
+        experiment.delete()
+        messages.success(request, f"'{name}' deleted.")
+        return redirect("project1:dataset_detail", pk=dataset_pk)
+    return render(request, "project1/experiment_confirm_delete.html", {"experiment": experiment})

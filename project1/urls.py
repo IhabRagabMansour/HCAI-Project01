@@ -13,4 +13,5 @@ urlpatterns = [
     path("datasets/<int:pk>/set-type/", views.dataset_set_problem_type, name="dataset_set_problem_type"),
     path("datasets/<int:dataset_pk>/experiments/new/", views.experiment_create, name="experiment_create"),
     path("experiments/<int:pk>/", views.experiment_detail, name="experiment_detail"),
+    path("experiments/<int:pk>/delete/", views.experiment_delete, name="experiment_delete"),
 ]

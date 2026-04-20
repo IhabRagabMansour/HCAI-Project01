@@ -13,6 +13,26 @@
 </div>
 
 {% elif experiment.is_prepared %}
+
+{% if experiment.stratify and not experiment.stratify_used %}
+<div class="p1-section">
+    <div class="p1-msg p1-msg--warning">
+        <strong>Stratify fallback:</strong> Stratification was requested but could not be applied because one or more classes had too few samples. The split was performed without stratification.
+    </div>
+</div>
+{% endif %}
+
+{% if experiment.has_high_cardinality_warning %}
+<div class="p1-section">
+    <div class="p1-msg p1-msg--warning">
+        <strong>High feature count:</strong> One-hot encoding expanded {{ experiment.n_features_before }} column(s) into {{ experiment.n_features_after }} features. If training is slow, consider switching to label encoding or dropping low-value categorical columns.
+    </div>
+</div>
+{% endif %}
+
+{% endif %}
+
+{% if experiment.is_prepared %}
 <div class="p1-section">
     <h2 class="p1-section-title">Results</h2>
     <table class="p1-detail-table">
@@ -32,16 +52,6 @@
             <th>Features (after encoding)</th>
             <td>{{ experiment.n_features_after }}</td>
         </tr>
-        {% if experiment.stratify and not experiment.stratify_used %}
-        <tr>
-            <th>Stratify</th>
-            <td>
-                <span class="p1-badge p1-badge--warn">
-                    Fallback — stratify disabled (some classes had too few samples)
-                </span>
-            </td>
-        </tr>
-        {% endif %}
     </table>
 </div>
 
@@ -107,6 +117,9 @@
 <div class="p1-action-row">
     <a href="{% url 'project1:dataset_detail' dataset.pk %}">
         <button type="button">Back to dataset</button>
+    </a>
+    <a href="{% url 'project1:experiment_delete' experiment.pk %}">
+        <button type="button" class="btn-danger">Delete</button>
     </a>
 </div>
 

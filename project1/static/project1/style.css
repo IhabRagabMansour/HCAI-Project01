@@ -316,6 +316,26 @@
     background-color: #e67e22;
 }
 
+/* ── Error badge variant ── */
+.p1-badge--error {
+    background-color: #c0392b;
+}
+
+/* ── Warning flash message ── */
+.p1-msg--warning {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffc107;
+}
+
+/* ── Empty state message ── */
+.p1-empty-msg {
+    text-align: center;
+    color: #888;
+    font-size: 15px;
+    padding: 20px 0;
+}
+
 /* ── Experiment form ── */
 .p1-exp-form {
     max-width: 640px;

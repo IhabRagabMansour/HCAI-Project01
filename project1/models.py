@@ -117,6 +117,15 @@ class Experiment(models.Model):
     def test_size_pct(self):
         return round(self.test_size * 100)
 
+    @property
+    def has_high_cardinality_warning(self):
+        return (
+            self.is_prepared
+            and self.categorical_encoding == "onehot"
+            and self.n_features_after is not None
+            and self.n_features_after > 50
+        )
+
     def as_config(self):
         from .services.preprocess import ExperimentConfig
         return ExperimentConfig(
