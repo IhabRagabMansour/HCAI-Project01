@@ -444,3 +444,111 @@ class PrepareExperimentTest(TestCase):
         df = pd.DataFrame({"x": [float("nan")], "y": [float("nan")]})
         with self.assertRaises(ValueError):
             prepare_experiment(df, "y", "regression", ExperimentConfig(missing_strategy="drop"))
+
+
+# ── Stage 5b: Experiment model + create view integration tests ──────────────
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ExperimentCreateViewTest(TestCase):
+    def setUp(self):
+        csv = b"a,b,target\n1.0,2.0,0\n3.0,4.0,1\n5.0,6.0,0\n7.0,8.0,1\n9.0,10.0,0\n"
+        uploaded = SimpleUploadedFile("exp.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        self.dataset = Dataset.objects.first()
+
+    def test_create_form_get_returns_200(self):
+        response = self.client.get(f"/project1/datasets/{self.dataset.pk}/experiments/new/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_create_form_contains_fields(self):
+        response = self.client.get(f"/project1/datasets/{self.dataset.pk}/experiments/new/")
+        self.assertContains(response, "missing_strategy")
+        self.assertContains(response, "categorical_encoding")
+        self.assertContains(response, "scaling")
+        self.assertContains(response, "test_size")
+
+    def test_post_valid_form_creates_experiment(self):
+        self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "My Experiment",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+            "stratify": "on",
+        })
+        from .models import Experiment
+        self.assertEqual(Experiment.objects.count(), 1)
+        exp = Experiment.objects.first()
+        self.assertEqual(exp.name, "My Experiment")
+        self.assertEqual(exp.dataset, self.dataset)
+
+    def test_post_populates_result_fields(self):
+        self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "Test",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        from .models import Experiment
+        exp = Experiment.objects.first()
+        self.assertTrue(exp.is_prepared)
+        self.assertIsNotNone(exp.n_train)
+        self.assertIsNotNone(exp.n_test)
+        self.assertIsNone(exp.prepare_error)
+
+    def test_post_auto_names_experiment(self):
+        self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        from .models import Experiment
+        exp = Experiment.objects.first()
+        self.assertIn("Experiment", exp.name)
+
+    def test_post_redirects_to_experiment_detail(self):
+        response = self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "Redir Test",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        from .models import Experiment
+        exp = Experiment.objects.first()
+        self.assertRedirects(response, f"/project1/experiments/{exp.pk}/")
+
+    def test_invalid_test_size_rejected(self):
+        response = self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "Bad",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.9",
+            "random_seed": "42",
+        })
+        from .models import Experiment
+        self.assertEqual(Experiment.objects.count(), 0)
+        self.assertContains(response, "0.10")
+
+    def test_experiment_detail_returns_200(self):
+        self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "Detail Test",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        from .models import Experiment
+        exp = Experiment.objects.first()
+        response = self.client.get(f"/project1/experiments/{exp.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, exp.name)

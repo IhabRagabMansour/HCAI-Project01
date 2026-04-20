@@ -55,3 +55,75 @@ class Dataset(models.Model):
             if col["name"] == self.target_name:
                 return col["dtype"]
         return None
+
+
+class Experiment(models.Model):
+    MISSING_CHOICES = [
+        ("mean_mode", "Mean / Mode"),
+        ("drop", "Drop rows with missing values"),
+        ("zero_empty", "Fill with 0 / empty string"),
+    ]
+    ENCODING_CHOICES = [
+        ("onehot", "One-hot encoding"),
+        ("label", "Label encoding"),
+        ("drop", "Drop categorical columns"),
+    ]
+    SCALING_CHOICES = [
+        ("standard", "Standardize (z-score)"),
+        ("minmax", "Min-max (0–1)"),
+        ("none", "None"),
+    ]
+
+    dataset = models.ForeignKey(
+        Dataset, on_delete=models.CASCADE, related_name="experiments"
+    )
+    name = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    # Preprocessing config
+    missing_strategy = models.CharField(
+        max_length=20, choices=MISSING_CHOICES, default="mean_mode"
+    )
+    categorical_encoding = models.CharField(
+        max_length=20, choices=ENCODING_CHOICES, default="onehot"
+    )
+    scaling = models.CharField(
+        max_length=20, choices=SCALING_CHOICES, default="standard"
+    )
+    test_size = models.FloatField(default=0.2)
+    random_seed = models.PositiveIntegerField(default=42)
+    stratify = models.BooleanField(default=True)
+
+    # Results (populated by prepare_experiment)
+    n_train = models.PositiveIntegerField(null=True, blank=True)
+    n_test = models.PositiveIntegerField(null=True, blank=True)
+    n_features_before = models.PositiveIntegerField(null=True, blank=True)
+    n_features_after = models.PositiveIntegerField(null=True, blank=True)
+    feature_names = models.JSONField(null=True, blank=True)
+    stratify_used = models.BooleanField(null=True, blank=True)
+    prepare_error = models.TextField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.name or f"Experiment #{self.pk}"
+
+    @property
+    def is_prepared(self):
+        return self.prepare_error is None and self.n_train is not None
+
+    @property
+    def test_size_pct(self):
+        return round(self.test_size * 100)
+
+    def as_config(self):
+        from .services.preprocess import ExperimentConfig
+        return ExperimentConfig(
+            missing_strategy=self.missing_strategy,
+            categorical_encoding=self.categorical_encoding,
+            scaling=self.scaling,
+            test_size=self.test_size,
+            random_seed=self.random_seed,
+            stratify=self.stratify,
+        )

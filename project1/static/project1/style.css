@@ -302,6 +302,57 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+/* ── Success button ── */
+.btn-success {
+    background-color: #27ae60 !important;
+}
+
+.btn-success:hover {
+    background-color: #1e8449 !important;
+}
+
+/* ── Warning badge variant ── */
+.p1-badge--warn {
+    background-color: #e67e22;
+}
+
+/* ── Experiment form ── */
+.p1-exp-form {
+    max-width: 640px;
+}
+
+.p1-optional {
+    color: #999;
+    font-size: 13px;
+    font-weight: normal;
+}
+
+.p1-label--inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.p1-exp-form select,
+.p1-exp-form input[type="number"],
+.p1-exp-form input[type="text"] {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 15px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    box-sizing: border-box;
+}
+
+.p1-exp-form input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
 /* ── Inline problem-type override form ── */
 .p1-inline-form {
     display: inline-flex;

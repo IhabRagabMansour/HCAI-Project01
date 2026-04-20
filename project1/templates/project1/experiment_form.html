@@ -1,0 +1,99 @@
+{% extends 'project1/base.html' %}
+{% load static %}
+
+{% block page_title %}New Experiment — {{ dataset.original_name }}{% endblock %}
+
+{% block project1_content %}
+
+<div class="p1-section">
+    <h2 class="p1-section-title">Dataset</h2>
+    <table class="p1-detail-table">
+        <tr><th>File</th><td>{{ dataset.original_name }}</td></tr>
+        <tr><th>Target</th><td><code>{{ dataset.target_name }}</code></td></tr>
+        <tr><th>Type</th><td>{{ dataset.get_problem_type_display }}</td></tr>
+        <tr><th>Rows</th><td>{{ dataset.n_rows }}</td></tr>
+        <tr><th>Columns</th><td>{{ dataset.n_columns }}</td></tr>
+    </table>
+</div>
+
+<form method="post" class="p1-form p1-exp-form">
+    {% csrf_token %}
+
+    <div class="p1-section">
+        <h2 class="p1-section-title">Configuration</h2>
+
+        <div class="p1-form-group">
+            <label class="p1-label" for="{{ form.name.id_for_label }}">
+                Name <span class="p1-optional">(optional)</span>
+            </label>
+            {{ form.name }}
+            <p class="p1-hint">Leave blank to auto-generate (Experiment 1, 2, …).</p>
+        </div>
+
+        <div class="p1-form-group">
+            <label class="p1-label" for="{{ form.missing_strategy.id_for_label }}">Missing values</label>
+            {{ form.missing_strategy }}
+            <p class="p1-hint">
+                <strong>Mean / Mode</strong> fills numeric gaps with the column mean and categorical gaps with the most frequent value — safe default.<br>
+                <strong>Drop rows</strong> removes any row that has at least one missing cell.<br>
+                <strong>Fill 0 / empty</strong> replaces numeric gaps with 0 and text gaps with an empty string.
+            </p>
+        </div>
+
+        <div class="p1-form-group">
+            <label class="p1-label" for="{{ form.categorical_encoding.id_for_label }}">Categorical encoding</label>
+            {{ form.categorical_encoding }}
+            <p class="p1-hint">
+                <strong>One-hot</strong> creates one binary column per unique category value — best for most models.<br>
+                <strong>Label</strong> maps each category to an integer (0, 1, 2 …) — compact but implies an order.<br>
+                <strong>Drop</strong> removes all non-numeric columns from the feature set.
+            </p>
+        </div>
+
+        <div class="p1-form-group">
+            <label class="p1-label" for="{{ form.scaling.id_for_label }}">Feature scaling</label>
+            {{ form.scaling }}
+            <p class="p1-hint">
+                <strong>Standardize</strong> subtracts the mean and divides by the standard deviation — required for SVM, k-NN, logistic regression.<br>
+                <strong>Min-max</strong> rescales each feature to [0, 1].<br>
+                <strong>None</strong> leaves features as-is — fine for tree-based models.
+            </p>
+        </div>
+
+        <div class="p1-form-group">
+            <label class="p1-label" for="{{ form.test_size.id_for_label }}">Test size</label>
+            {{ form.test_size }}
+            {% if form.test_size.errors %}
+                <ul class="p1-field-errors">
+                    {% for e in form.test_size.errors %}<li>{{ e }}</li>{% endfor %}
+                </ul>
+            {% endif %}
+            <p class="p1-hint">Fraction of rows held out for evaluation (0.10 – 0.50). Default 0.20 = 20 % test, 80 % train.</p>
+        </div>
+
+        <div class="p1-form-group">
+            <label class="p1-label" for="{{ form.random_seed.id_for_label }}">Random seed</label>
+            {{ form.random_seed }}
+            <p class="p1-hint">Fixed seed guarantees the same split every run. Change it to try a different partition of the data.</p>
+        </div>
+
+        {% if dataset.problem_type == "classification" %}
+        <div class="p1-form-group">
+            <label class="p1-label p1-label--inline">
+                {{ form.stratify }}
+                Stratify split
+            </label>
+            <p class="p1-hint">Keeps the class proportion equal in both train and test sets. Recommended when classes are imbalanced. Automatically disabled if any class has too few samples.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="p1-action-row">
+        <a href="{% url 'project1:dataset_detail' dataset.pk %}">
+            <button type="button">Cancel</button>
+        </a>
+        <button type="submit">Prepare Data</button>
+    </div>
+</form>
+
+{% endblock %}

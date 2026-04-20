@@ -5,12 +5,13 @@ from django.contrib import messages
 from django.core.paginator import Paginator
 from django.http import JsonResponse
 
-from .forms import DatasetUploadForm
-from .models import Dataset
+from .forms import DatasetUploadForm, ExperimentForm
+from .models import Dataset, Experiment
 from .services.data import (
     read_csv_safely, numeric_column_names,
     build_chart_data, build_histogram_data, build_boxplot_data, build_heatmap_data,
 )
+from .services.preprocess import prepare_experiment
 
 ROWS_PER_PAGE = 25
 
@@ -193,3 +194,60 @@ def dataset_delete(request, pk):
         messages.success(request, f"'{name}' deleted successfully.")
         return redirect("project1:dataset_list")
     return render(request, "project1/dataset_confirm_delete.html", {"dataset": dataset})
+
+
+def experiment_create(request, dataset_pk):
+    dataset = get_object_or_404(Dataset, pk=dataset_pk)
+
+    if not dataset.is_parsed:
+        messages.error(request, "Dataset must be successfully parsed before creating an experiment.")
+        return redirect("project1:dataset_detail", pk=dataset_pk)
+
+    if not dataset.target_name:
+        messages.error(request, "Dataset has no identified target column.")
+        return redirect("project1:dataset_detail", pk=dataset_pk)
+
+    if request.method == "POST":
+        form = ExperimentForm(request.POST)
+        if form.is_valid():
+            experiment = form.save(commit=False)
+            experiment.dataset = dataset
+            if not experiment.name:
+                count = dataset.experiments.count()
+                experiment.name = f"Experiment {count + 1}"
+            experiment.save()
+
+            try:
+                df = read_csv_safely(dataset.file)
+                result = prepare_experiment(
+                    df, dataset.target_name, dataset.problem_type, experiment.as_config()
+                )
+                experiment.n_train = result.n_train
+                experiment.n_test = result.n_test
+                experiment.n_features_before = result.n_features_before
+                experiment.n_features_after = result.n_features_after
+                experiment.feature_names = result.feature_names
+                experiment.stratify_used = result.stratify_used
+                experiment.prepare_error = None
+            except Exception as e:
+                experiment.prepare_error = str(e)
+
+            experiment.save()
+            messages.success(request, f"'{experiment.name}' prepared successfully.")
+            return redirect("project1:experiment_detail", pk=experiment.pk)
+    else:
+        initial = {"stratify": dataset.problem_type == "classification"}
+        form = ExperimentForm(initial=initial)
+
+    return render(request, "project1/experiment_form.html", {
+        "form": form,
+        "dataset": dataset,
+    })
+
+
+def experiment_detail(request, pk):
+    experiment = get_object_or_404(Experiment, pk=pk)
+    return render(request, "project1/experiment_detail.html", {
+        "experiment": experiment,
+        "dataset": experiment.dataset,
+    })

@@ -1,0 +1,113 @@
+{% extends 'project1/base.html' %}
+{% load static %}
+
+{% block page_title %}{{ experiment.name }}{% endblock %}
+
+{% block project1_content %}
+
+{% if experiment.prepare_error %}
+<div class="p1-section">
+    <div class="p1-msg p1-msg--error">
+        <strong>Preparation failed:</strong> {{ experiment.prepare_error }}
+    </div>
+</div>
+
+{% elif experiment.is_prepared %}
+<div class="p1-section">
+    <h2 class="p1-section-title">Results</h2>
+    <table class="p1-detail-table">
+        <tr>
+            <th>Training rows</th>
+            <td>{{ experiment.n_train }}</td>
+        </tr>
+        <tr>
+            <th>Test rows</th>
+            <td>{{ experiment.n_test }} ({{ experiment.test_size_pct }}% of data)</td>
+        </tr>
+        <tr>
+            <th>Features (raw)</th>
+            <td>{{ experiment.n_features_before }}</td>
+        </tr>
+        <tr>
+            <th>Features (after encoding)</th>
+            <td>{{ experiment.n_features_after }}</td>
+        </tr>
+        {% if experiment.stratify and not experiment.stratify_used %}
+        <tr>
+            <th>Stratify</th>
+            <td>
+                <span class="p1-badge p1-badge--warn">
+                    Fallback — stratify disabled (some classes had too few samples)
+                </span>
+            </td>
+        </tr>
+        {% endif %}
+    </table>
+</div>
+
+<div class="p1-section">
+    <h2 class="p1-section-title">Features after encoding</h2>
+    <table class="p1-table">
+        <thead>
+            <tr>
+                <th class="p1-th-rownum">#</th>
+                <th>Feature name</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for fname in experiment.feature_names %}
+            <tr>
+                <td class="p1-row-num">{{ forloop.counter }}</td>
+                <td><code>{{ fname }}</code></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<div class="p1-section">
+    <h2 class="p1-section-title">Configuration</h2>
+    <table class="p1-detail-table">
+        <tr>
+            <th>Dataset</th>
+            <td><a href="{% url 'project1:dataset_detail' dataset.pk %}" class="p1-link">{{ dataset.original_name }}</a></td>
+        </tr>
+        <tr>
+            <th>Missing values</th>
+            <td>{{ experiment.get_missing_strategy_display }}</td>
+        </tr>
+        <tr>
+            <th>Categorical encoding</th>
+            <td>{{ experiment.get_categorical_encoding_display }}</td>
+        </tr>
+        <tr>
+            <th>Feature scaling</th>
+            <td>{{ experiment.get_scaling_display }}</td>
+        </tr>
+        <tr>
+            <th>Test size</th>
+            <td>{{ experiment.test_size }} ({{ experiment.test_size_pct }}%)</td>
+        </tr>
+        <tr>
+            <th>Random seed</th>
+            <td>{{ experiment.random_seed }}</td>
+        </tr>
+        <tr>
+            <th>Stratify</th>
+            <td>{{ experiment.stratify|yesno:"Yes,No" }}</td>
+        </tr>
+        <tr>
+            <th>Created</th>
+            <td>{{ experiment.created_at|date:"Y-m-d H:i" }}</td>
+        </tr>
+    </table>
+</div>
+
+<div class="p1-action-row">
+    <a href="{% url 'project1:dataset_detail' dataset.pk %}">
+        <button type="button">Back to dataset</button>
+    </a>
+</div>
+
+{% endblock %}

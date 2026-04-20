@@ -1,5 +1,5 @@
 from django import forms
-from .models import Dataset
+from .models import Dataset, Experiment
 
 MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 
@@ -66,3 +66,23 @@ class DatasetUploadForm(forms.ModelForm):
             instance.save()
 
         return instance
+
+
+class ExperimentForm(forms.ModelForm):
+    class Meta:
+        model = Experiment
+        fields = [
+            "name", "missing_strategy", "categorical_encoding",
+            "scaling", "test_size", "random_seed", "stratify",
+        ]
+        widgets = {
+            "test_size": forms.NumberInput(attrs={"step": "0.05", "min": "0.10", "max": "0.50"}),
+            "random_seed": forms.NumberInput(attrs={"min": "0"}),
+            "name": forms.TextInput(attrs={"placeholder": "Leave blank to auto-name"}),
+        }
+
+    def clean_test_size(self):
+        v = self.cleaned_data["test_size"]
+        if not (0.10 <= v <= 0.50):
+            raise forms.ValidationError("Test size must be between 0.10 and 0.50.")
+        return v
