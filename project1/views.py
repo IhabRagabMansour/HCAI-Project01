@@ -50,6 +50,8 @@ def dataset_detail(request, pk):
     sort_col = None
     sort_order = "asc"
     numeric_cols = []
+    histogram_cols = []
+    class_names = []
     chart_type = "scatter"
     chart_x = ""
     chart_y = ""
@@ -74,16 +76,26 @@ def dataset_detail(request, pk):
 
             numeric_cols = numeric_column_names(df)
 
+            # Histogram also allows the target column even if non-numeric
+            histogram_cols = list(numeric_cols)
+            if dataset.target_name and dataset.target_name not in histogram_cols and dataset.target_name in df.columns:
+                histogram_cols.append(dataset.target_name)
+
+            if dataset.problem_type == "classification" and dataset.target_name in df.columns:
+                class_names = sorted(df[dataset.target_name].astype(str).unique().tolist())
+
             # Chart state from URL
             default_mode = dataset.problem_type if dataset.problem_type in ("classification", "regression") else "regression"
             chart_type = request.GET.get("type", "scatter")
             if chart_type not in ("scatter", "histogram", "boxplot", "heatmap"):
                 chart_type = "scatter"
-            chart_x = request.GET.get("x", numeric_cols[0] if numeric_cols else "")
+
+            valid_x_cols = histogram_cols if chart_type == "histogram" else numeric_cols
+            chart_x = request.GET.get("x", valid_x_cols[0] if valid_x_cols else "")
             chart_y = request.GET.get("y", numeric_cols[1] if len(numeric_cols) >= 2 else "")
             chart_mode = request.GET.get("mode", default_mode)
-            if chart_x not in numeric_cols:
-                chart_x = numeric_cols[0] if numeric_cols else ""
+            if chart_x not in valid_x_cols:
+                chart_x = valid_x_cols[0] if valid_x_cols else ""
             if chart_y not in numeric_cols:
                 chart_y = numeric_cols[1] if len(numeric_cols) >= 2 else (numeric_cols[0] if numeric_cols else "")
             if chart_mode not in ("classification", "regression"):
@@ -115,6 +127,8 @@ def dataset_detail(request, pk):
         "sort_col": sort_col,
         "sort_order": sort_order,
         "numeric_cols": numeric_cols,
+        "histogram_cols": histogram_cols,
+        "class_names": class_names,
         "chart_type": chart_type,
         "chart_x": chart_x,
         "chart_y": chart_y,
@@ -140,7 +154,7 @@ def dataset_chart_data(request, pk):
     numeric_cols = numeric_column_names(df)
 
     if chart_type == "histogram":
-        if x_col not in numeric_cols:
+        if x_col not in df.columns:
             return JsonResponse({"error": "Invalid column."}, status=400)
         return JsonResponse(build_histogram_data(df, x_col))
 
@@ -158,6 +172,17 @@ def dataset_chart_data(request, pk):
     if x_col not in numeric_cols or y_col not in numeric_cols:
         return JsonResponse({"error": "Invalid column selection."}, status=400)
     return JsonResponse(build_chart_data(df, x_col, y_col, mode, dataset.target_name))
+
+
+def dataset_set_problem_type(request, pk):
+    dataset = get_object_or_404(Dataset, pk=pk)
+    if request.method == "POST":
+        new_type = request.POST.get("problem_type")
+        if new_type in ("classification", "regression"):
+            dataset.problem_type = new_type
+            dataset.save(update_fields=["problem_type"])
+            messages.success(request, f"Problem type changed to {new_type}.")
+    return redirect("project1:dataset_detail", pk=pk)
 
 
 def dataset_delete(request, pk):

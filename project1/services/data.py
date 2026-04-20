@@ -109,20 +109,42 @@ def build_chart_data(df: pd.DataFrame, x_col: str, y_col: str, mode: str, target
 
 def build_histogram_data(df: pd.DataFrame, col: str, bins: int = 20) -> dict:
     import numpy as np
-    values = df[col].dropna().astype(float).values
-    counts, edges = np.histogram(values, bins=bins)
-    midpoints = [(edges[i] + edges[i + 1]) / 2 for i in range(len(counts))]
-    labels = [f"{m:.3g}" for m in midpoints]
-    return {
-        "labels": labels,
-        "datasets": [{
-            "label": col,
-            "data": counts.tolist(),
-            "backgroundColor": "#1f77b4bb",
-            "borderColor": "#1f77b4",
-            "borderWidth": 1,
-        }],
-    }
+    TAB10 = [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+        "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+    ]
+    values = df[col].dropna()
+
+    if pd.api.types.is_numeric_dtype(values):
+        counts, edges = np.histogram(values.astype(float).values, bins=bins)
+        midpoints = [(edges[i] + edges[i + 1]) / 2 for i in range(len(counts))]
+        labels = [f"{m:.3g}" for m in midpoints]
+        return {
+            "labels": labels,
+            "touching": True,
+            "datasets": [{
+                "label": col,
+                "data": counts.tolist(),
+                "backgroundColor": "#1f77b4bb",
+                "borderColor": "#1f77b4",
+                "borderWidth": 1,
+            }],
+        }
+    else:
+        vc = values.astype(str).value_counts()
+        labels = vc.index.tolist()
+        colors = [TAB10[i % len(TAB10)] for i in range(len(labels))]
+        return {
+            "labels": labels,
+            "touching": False,
+            "datasets": [{
+                "label": col,
+                "data": vc.values.tolist(),
+                "backgroundColor": colors,
+                "borderColor": colors,
+                "borderWidth": 1,
+            }],
+        }
 
 
 def build_boxplot_data(df: pd.DataFrame, col: str, target_name: str | None, mode: str) -> dict:

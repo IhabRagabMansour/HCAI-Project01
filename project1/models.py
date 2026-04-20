@@ -45,3 +45,13 @@ class Dataset(models.Model):
     @property
     def is_parsed(self):
         return self.parse_error is None and self.n_rows is not None
+
+    @property
+    def target_dtype(self):
+        """Return the humanized dtype of the target column, or None."""
+        if not self.columns or not self.target_name:
+            return None
+        for col in self.columns:
+            if col["name"] == self.target_name:
+                return col["dtype"]
+        return None

@@ -14,7 +14,7 @@
 
     let chart = null;
 
-    // ── Control visibility ──────────────────────────────────────────────────
+    // ── Control visibility + X options ─────────────────────────────────────
     function updateControls(type) {
         const showX    = type !== "heatmap";
         const showY    = type === "scatter";
@@ -25,6 +25,21 @@
         ctrlMode.style.display = showMode ? "" : "none";
 
         xLabel.textContent = (type === "histogram" || type === "boxplot") ? "Column" : "X axis";
+
+        // Swap X dropdown options based on chart type
+        const cols = (type === "histogram") ? window.__histogramCols : window.__numericCols;
+        const prev = xSelect.value;
+        xSelect.innerHTML = "";
+        cols.forEach(col => {
+            const opt = document.createElement("option");
+            opt.value = col;
+            opt.textContent = col;
+            if (col === prev) opt.selected = true;
+            xSelect.appendChild(opt);
+        });
+        if (!cols.includes(xSelect.value) && cols.length) {
+            xSelect.value = cols[0];
+        }
     }
 
     // ── URL helpers ─────────────────────────────────────────────────────────
@@ -98,11 +113,13 @@
             });
 
         } else if (type === "histogram") {
+            const bp = data.touching ? 1.0 : 0.8;
+            const cp = data.touching ? 1.0 : 0.9;
             chart = new Chart(canvas, {
                 type: "bar",
                 data: {
                     labels: data.labels,
-                    datasets: data.datasets.map(ds => ({ ...ds, barPercentage: 1.0, categoryPercentage: 1.0 })),
+                    datasets: data.datasets.map(ds => ({ ...ds, barPercentage: bp, categoryPercentage: cp })),
                 },
                 options: {
                     responsive: true,

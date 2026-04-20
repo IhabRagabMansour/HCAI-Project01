@@ -50,9 +50,27 @@
                 <td><code>{{ dataset.target_name }}</code></td>
             </tr>
             <tr>
-                <th>Detected type</th>
-                <td>{{ dataset.get_problem_type_display }}</td>
+                <th>Problem type</th>
+                <td>
+                    {{ dataset.get_problem_type_display }}
+                    {% if dataset.target_dtype == "integer" or dataset.target_dtype == "float" %}
+                    <form method="post" action="{% url 'project1:dataset_set_problem_type' dataset.pk %}" class="p1-inline-form">
+                        {% csrf_token %}
+                        <select name="problem_type" class="p1-inline-select">
+                            <option value="classification"{% if dataset.problem_type == "classification" %} selected{% endif %}>Classification</option>
+                            <option value="regression"{% if dataset.problem_type == "regression" %} selected{% endif %}>Regression</option>
+                        </select>
+                        <button type="submit" class="p1-inline-btn">Change</button>
+                    </form>
+                    {% endif %}
+                </td>
             </tr>
+            {% if dataset.problem_type == "classification" and class_names %}
+            <tr>
+                <th>Classes ({{ class_names|length }})</th>
+                <td>{{ class_names|join:", " }}</td>
+            </tr>
+            {% endif %}
         </table>
     </div>
 
@@ -132,6 +150,8 @@
         window.__chartInitX = "{{ chart_x|escapejs }}";
         window.__chartInitY = "{{ chart_y|escapejs }}";
         window.__chartInitMode = "{{ chart_mode|escapejs }}";
+        window.__numericCols = [{% for col in numeric_cols %}"{{ col|escapejs }}"{% if not forloop.last %},{% endif %}{% endfor %}];
+        window.__histogramCols = [{% for col in histogram_cols %}"{{ col|escapejs }}"{% if not forloop.last %},{% endif %}{% endfor %}];
     </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@sgratzl/chartjs-chart-boxplot@4/build/index.umd.min.js"></script>

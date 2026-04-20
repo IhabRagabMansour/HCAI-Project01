@@ -302,6 +302,36 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+/* ── Inline problem-type override form ── */
+.p1-inline-form {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 12px;
+}
+
+.p1-inline-select {
+    padding: 3px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.p1-inline-btn {
+    padding: 3px 10px;
+    font-size: 13px;
+    background-color: #275CB2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    width: auto;
+}
+
+.p1-inline-btn:hover {
+    background-color: #1e4a9a;
+}
+
 /* ── Chart controls ── */
 .p1-chart-controls {
     display: flex;
