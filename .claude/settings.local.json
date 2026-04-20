@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python manage.py startapp project1)",
+      "Read(//c/Users/mafia/Desktop/HCAI/**)",
+      "Bash(pip show *)"
+    ]
+  }
+}

@@ -1,10 +1,16 @@
+import json
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.core.paginator import Paginator
+from django.http import JsonResponse
 
 from .forms import DatasetUploadForm
 from .models import Dataset
-from .services.data import read_csv_safely
+from .services.data import (
+    read_csv_safely, numeric_column_names,
+    build_chart_data, build_histogram_data, build_boxplot_data, build_heatmap_data,
+)
 
 ROWS_PER_PAGE = 25
 
@@ -43,6 +49,11 @@ def dataset_detail(request, pk):
     column_names = [col["name"] for col in dataset.columns] if dataset.columns else []
     sort_col = None
     sort_order = "asc"
+    numeric_cols = []
+    chart_type = "scatter"
+    chart_x = ""
+    chart_y = ""
+    chart_mode = ""
 
     if dataset.is_parsed:
         try:
@@ -60,6 +71,23 @@ def dataset_detail(request, pk):
             paginator = Paginator(rows, ROWS_PER_PAGE)
             page_number = request.GET.get("page", 1)
             page_obj = paginator.get_page(page_number)
+
+            numeric_cols = numeric_column_names(df)
+
+            # Chart state from URL
+            default_mode = dataset.problem_type if dataset.problem_type in ("classification", "regression") else "regression"
+            chart_type = request.GET.get("type", "scatter")
+            if chart_type not in ("scatter", "histogram", "boxplot", "heatmap"):
+                chart_type = "scatter"
+            chart_x = request.GET.get("x", numeric_cols[0] if numeric_cols else "")
+            chart_y = request.GET.get("y", numeric_cols[1] if len(numeric_cols) >= 2 else "")
+            chart_mode = request.GET.get("mode", default_mode)
+            if chart_x not in numeric_cols:
+                chart_x = numeric_cols[0] if numeric_cols else ""
+            if chart_y not in numeric_cols:
+                chart_y = numeric_cols[1] if len(numeric_cols) >= 2 else (numeric_cols[0] if numeric_cols else "")
+            if chart_mode not in ("classification", "regression"):
+                chart_mode = default_mode
         except Exception:
             pass
 
@@ -67,7 +95,6 @@ def dataset_detail(request, pk):
     sort_headers = []
     for name in column_names:
         if name == sort_col:
-            # Already sorted by this column — toggle direction
             next_order = "asc" if sort_order == "desc" else "desc"
             indicator = "▲" if sort_order == "asc" else "▼"
         else:
@@ -87,7 +114,50 @@ def dataset_detail(request, pk):
         "sort_headers": sort_headers,
         "sort_col": sort_col,
         "sort_order": sort_order,
+        "numeric_cols": numeric_cols,
+        "chart_type": chart_type,
+        "chart_x": chart_x,
+        "chart_y": chart_y,
+        "chart_mode": chart_mode,
     })
+
+
+def dataset_chart_data(request, pk):
+    dataset = get_object_or_404(Dataset, pk=pk)
+    if not dataset.is_parsed:
+        return JsonResponse({"error": "Dataset not parsed."}, status=400)
+
+    chart_type = request.GET.get("type", "scatter")
+    x_col = request.GET.get("x", "")
+    y_col = request.GET.get("y", "")
+    mode = request.GET.get("mode", "regression")
+
+    try:
+        df = read_csv_safely(dataset.file)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+    numeric_cols = numeric_column_names(df)
+
+    if chart_type == "histogram":
+        if x_col not in numeric_cols:
+            return JsonResponse({"error": "Invalid column."}, status=400)
+        return JsonResponse(build_histogram_data(df, x_col))
+
+    if chart_type == "boxplot":
+        if x_col not in numeric_cols:
+            return JsonResponse({"error": "Invalid column."}, status=400)
+        return JsonResponse(build_boxplot_data(df, x_col, dataset.target_name, mode))
+
+    if chart_type == "heatmap":
+        if len(numeric_cols) < 2:
+            return JsonResponse({"error": "Need at least 2 numeric columns."}, status=400)
+        return JsonResponse(build_heatmap_data(df, numeric_cols))
+
+    # scatter (default)
+    if x_col not in numeric_cols or y_col not in numeric_cols:
+        return JsonResponse({"error": "Invalid column selection."}, status=400)
+    return JsonResponse(build_chart_data(df, x_col, y_col, mode, dataset.target_name))
 
 
 def dataset_delete(request, pk):

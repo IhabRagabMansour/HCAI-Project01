@@ -1,4 +1,5 @@
 {% extends 'project1/base.html' %}
+{% load static %}
 
 {% block page_title %}{{ dataset.original_name }}{% endblock %}
 
@@ -84,6 +85,59 @@
             </tbody>
         </table>
     </div>
+
+    {% if numeric_cols|length >= 2 %}
+    <div class="p1-section" id="chart-section">
+        <h2 class="p1-section-title">Visualization</h2>
+        <div class="p1-chart-controls">
+            <label class="p1-chart-label">Plot type
+                <select id="chart-type" class="p1-chart-select">
+                    <option value="scatter"{% if chart_type == "scatter" %} selected{% endif %}>Scatter</option>
+                    <option value="histogram"{% if chart_type == "histogram" %} selected{% endif %}>Histogram</option>
+                    <option value="boxplot"{% if chart_type == "boxplot" %} selected{% endif %}>Box Plot</option>
+                    <option value="heatmap"{% if chart_type == "heatmap" %} selected{% endif %}>Heatmap</option>
+                </select>
+            </label>
+            <label class="p1-chart-label" id="ctrl-x">
+                <span id="chart-x-label">X axis</span>
+                <select id="chart-x" class="p1-chart-select">
+                    {% for col in numeric_cols %}
+                        <option value="{{ col }}"{% if col == chart_x %} selected{% endif %}>{{ col }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="p1-chart-label" id="ctrl-y">Y axis
+                <select id="chart-y" class="p1-chart-select">
+                    {% for col in numeric_cols %}
+                        <option value="{{ col }}"{% if col == chart_y %} selected{% endif %}>{{ col }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="p1-chart-label" id="ctrl-mode">Mode
+                <select id="chart-mode" class="p1-chart-select">
+                    <option value="regression"{% if chart_mode == "regression" %} selected{% endif %}>Regression</option>
+                    <option value="classification"{% if chart_mode == "classification" %} selected{% endif %}>Classification</option>
+                </select>
+            </label>
+        </div>
+        <div class="p1-chart-wrap">
+            <canvas id="scatter-chart"></canvas>
+        </div>
+        <p id="chart-error" class="p1-chart-error" style="display:none;"></p>
+    </div>
+
+    <script>
+        window.__chartDataUrl = "{% url 'project1:dataset_chart_data' dataset.pk %}";
+        window.__chartInitType = "{{ chart_type|escapejs }}";
+        window.__chartInitX = "{{ chart_x|escapejs }}";
+        window.__chartInitY = "{{ chart_y|escapejs }}";
+        window.__chartInitMode = "{{ chart_mode|escapejs }}";
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@sgratzl/chartjs-chart-boxplot@4/build/index.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2/dist/chartjs-chart-matrix.min.js"></script>
+    <script src="{% static 'project1/chart.js' %}"></script>
+    {% endif %}
 
     {% if page_obj %}
     <div class="p1-section" id="data-section">

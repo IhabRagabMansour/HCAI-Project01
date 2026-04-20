@@ -302,6 +302,44 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+/* ── Chart controls ── */
+.p1-chart-controls {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.p1-chart-label {
+    display: flex;
+    flex-direction: column;
+    font-size: 14px;
+    color: #555;
+    gap: 4px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.p1-chart-select {
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+    min-width: 140px;
+}
+
+.p1-chart-wrap {
+    max-width: 680px;
+    margin: 0 auto;
+}
+
+.p1-chart-error {
+    text-align: center;
+    color: #721c24;
+    font-size: 14px;
+    margin-top: 8px;
+}
+
 /* ── Page info subtitle next to section title ── */
 .p1-page-info {
     font-size: 14px;
