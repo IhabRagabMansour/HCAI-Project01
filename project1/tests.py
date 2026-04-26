@@ -7,8 +7,11 @@ from django.test import TestCase, override_settings
 from .models import Dataset
 from .services.data import humanize_dtype, infer_problem_type, extract_metadata
 from .services.preprocess import (
-    ExperimentConfig, handle_missing, encode_categorical,
+    ExperimentConfig, PreparedData, handle_missing, encode_categorical,
     encode_target, scale_features, split_train_test, prepare_experiment,
+)
+from .services.train import (
+    build_estimator, compute_score, train_and_score,
 )
 
 import numpy as np
@@ -618,3 +621,138 @@ class ExperimentListAndDeleteTest(TestCase):
         response = self.client.get(f"/project1/datasets/{self.dataset.pk}/")
         self.assertContains(response, "Exp Alpha")
         self.assertContains(response, "Exp Beta")
+
+
+# ── Stage 6a: training service unit tests ──────────────────────────────────
+
+class BuildEstimatorTest(TestCase):
+    def test_classification_algorithms_return_sklearn_objects(self):
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.svm import SVC
+        from sklearn.neighbors import KNeighborsClassifier
+        from sklearn.tree import DecisionTreeClassifier
+        self.assertIsInstance(build_estimator("logreg",  42), LogisticRegression)
+        self.assertIsInstance(build_estimator("rf_clf",  42), RandomForestClassifier)
+        self.assertIsInstance(build_estimator("svm",     42), SVC)
+        self.assertIsInstance(build_estimator("knn_clf", 42), KNeighborsClassifier)
+        self.assertIsInstance(build_estimator("dt_clf",  42), DecisionTreeClassifier)
+
+    def test_regression_algorithms_return_sklearn_objects(self):
+        from sklearn.linear_model import LinearRegression
+        from sklearn.ensemble import RandomForestRegressor
+        from sklearn.svm import SVR
+        from sklearn.neighbors import KNeighborsRegressor
+        from sklearn.tree import DecisionTreeRegressor
+        self.assertIsInstance(build_estimator("linreg",  42), LinearRegression)
+        self.assertIsInstance(build_estimator("rf_reg",  42), RandomForestRegressor)
+        self.assertIsInstance(build_estimator("svr",     42), SVR)
+        self.assertIsInstance(build_estimator("knn_reg", 42), KNeighborsRegressor)
+        self.assertIsInstance(build_estimator("dt_reg",  42), DecisionTreeRegressor)
+
+    def test_random_seed_is_passed(self):
+        est = build_estimator("rf_clf", random_seed=99)
+        self.assertEqual(est.random_state, 99)
+
+    def test_unknown_algorithm_raises(self):
+        with self.assertRaises(ValueError):
+            build_estimator("bogus_algo", 42)
+
+
+class ComputeScoreTest(TestCase):
+    def test_accuracy_perfect(self):
+        self.assertEqual(compute_score([0, 1, 0, 1], [0, 1, 0, 1], "accuracy"), 1.0)
+
+    def test_accuracy_half(self):
+        self.assertEqual(compute_score([0, 1, 0, 1], [0, 0, 0, 0], "accuracy"), 0.5)
+
+    def test_f1_perfect(self):
+        self.assertEqual(compute_score([0, 1, 0, 1], [0, 1, 0, 1], "f1"), 1.0)
+
+    def test_precision_recall_run(self):
+        # Smoke test — both produce a number
+        p = compute_score([0, 1, 0, 1], [0, 1, 1, 1], "precision")
+        r = compute_score([0, 1, 0, 1], [0, 1, 1, 1], "recall")
+        self.assertGreaterEqual(p, 0.0)
+        self.assertGreaterEqual(r, 0.0)
+
+    def test_r2_perfect(self):
+        self.assertAlmostEqual(compute_score([1.0, 2.0, 3.0], [1.0, 2.0, 3.0], "r2"), 1.0)
+
+    def test_rmse_zero_when_perfect(self):
+        self.assertEqual(compute_score([1.0, 2.0, 3.0], [1.0, 2.0, 3.0], "rmse"), 0.0)
+
+    def test_rmse_nonzero(self):
+        # MSE = ((1-2)^2 + (2-3)^2 + (3-4)^2) / 3 = 1 → RMSE = 1
+        self.assertAlmostEqual(compute_score([1.0, 2.0, 3.0], [2.0, 3.0, 4.0], "rmse"), 1.0)
+
+    def test_mae(self):
+        self.assertAlmostEqual(compute_score([1.0, 2.0, 3.0], [2.0, 3.0, 4.0], "mae"), 1.0)
+
+    def test_unknown_metric_raises(self):
+        with self.assertRaises(ValueError):
+            compute_score([0, 1], [0, 1], "bogus_metric")
+
+
+class TrainAndScoreTest(TestCase):
+    def _classification_prepared(self):
+        # Two well-separated clusters → easy classification problem
+        np.random.seed(0)
+        df = pd.DataFrame({
+            "x1": np.concatenate([np.random.randn(50), np.random.randn(50) + 5]),
+            "x2": np.concatenate([np.random.randn(50), np.random.randn(50) + 5]),
+            "target": [0] * 50 + [1] * 50,
+        })
+        return prepare_experiment(df, "target", "classification", ExperimentConfig(stratify=False))
+
+    def _regression_prepared(self):
+        np.random.seed(0)
+        x = np.random.randn(100)
+        df = pd.DataFrame({"x": x, "y": x * 2.0 + 1.0 + np.random.randn(100) * 0.1})
+        return prepare_experiment(df, "y", "regression", ExperimentConfig(stratify=False, scaling="none"))
+
+    def test_classification_logreg_high_accuracy(self):
+        prepared = self._classification_prepared()
+        estimator = build_estimator("logreg", 42)
+        result = train_and_score(prepared, estimator, "accuracy")
+        self.assertGreater(result.test_score, 0.85)
+        self.assertGreater(result.train_score, 0.85)
+
+    def test_classification_f1_metric(self):
+        prepared = self._classification_prepared()
+        estimator = build_estimator("rf_clf", 42)
+        result = train_and_score(prepared, estimator, "f1")
+        self.assertGreater(result.test_score, 0.85)
+
+    def test_regression_linreg_high_r2(self):
+        prepared = self._regression_prepared()
+        estimator = build_estimator("linreg", 42)
+        result = train_and_score(prepared, estimator, "r2")
+        self.assertGreater(result.test_score, 0.95)
+
+    def test_regression_rmse_low(self):
+        prepared = self._regression_prepared()
+        estimator = build_estimator("linreg", 42)
+        result = train_and_score(prepared, estimator, "rmse")
+        self.assertLess(result.test_score, 0.5)
+
+    def test_estimator_bytes_nonempty(self):
+        prepared = self._classification_prepared()
+        result = train_and_score(prepared, build_estimator("logreg", 42), "accuracy")
+        self.assertGreater(len(result.estimator_bytes), 0)
+
+    def test_pickled_estimator_roundtrips(self):
+        import joblib, io
+        prepared = self._classification_prepared()
+        result = train_and_score(prepared, build_estimator("logreg", 42), "accuracy")
+        loaded = joblib.load(io.BytesIO(result.estimator_bytes))
+        # Loaded estimator should produce identical predictions
+        np.testing.assert_array_equal(
+            loaded.predict(prepared.X_test),
+            np.asarray(loaded.predict(prepared.X_test)),
+        )
+
+    def test_duration_is_recorded(self):
+        prepared = self._classification_prepared()
+        result = train_and_score(prepared, build_estimator("logreg", 42), "accuracy")
+        self.assertGreaterEqual(result.train_duration_ms, 0)
