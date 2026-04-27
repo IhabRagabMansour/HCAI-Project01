@@ -13,6 +13,10 @@ from .services.preprocess import (
 from .services.train import (
     build_estimator, compute_score, train_and_score,
 )
+from .services.evaluate import (
+    evaluate_classification, evaluate_regression,
+    compute_feature_importance, build_evaluation,
+)
 
 import numpy as np
 import pandas as pd
@@ -959,3 +963,211 @@ class TrainedModelDeleteTest(TestCase):
         self.experiment.delete()
         self.assertEqual(TrainedModel.objects.count(), 0)
         self.assertFalse(os.path.isfile(file_path))
+
+
+# ── Stage 7a: evaluation service unit tests ────────────────────────────────
+
+def _make_classification_prepared():
+    np.random.seed(0)
+    df = pd.DataFrame({
+        "x1": np.concatenate([np.random.randn(50), np.random.randn(50) + 5]),
+        "x2": np.concatenate([np.random.randn(50), np.random.randn(50) + 5]),
+        "target": [0] * 50 + [1] * 50,
+    })
+    return prepare_experiment(df, "target", "classification", ExperimentConfig(stratify=False))
+
+
+def _make_regression_prepared():
+    np.random.seed(0)
+    x = np.random.randn(100)
+    df = pd.DataFrame({"x": x, "y": x * 2.0 + 1.0 + np.random.randn(100) * 0.1})
+    return prepare_experiment(df, "y", "regression", ExperimentConfig(stratify=False, scaling="none"))
+
+
+def _make_string_target_prepared():
+    df = pd.DataFrame({
+        "x1": list(range(20)),
+        "x2": [i * 0.5 for i in range(20)],
+        "target": ["cat", "dog"] * 10,
+    })
+    return prepare_experiment(df, "target", "classification", ExperimentConfig(stratify=False, scaling="none"))
+
+
+class EvaluateClassificationTest(TestCase):
+    def setUp(self):
+        self.prepared = _make_classification_prepared()
+        self.estimator = build_estimator("logreg", 42)
+        self.estimator.fit(self.prepared.X_train, self.prepared.y_train)
+
+    def test_problem_type_set(self):
+        result = evaluate_classification(self.estimator, self.prepared, None)
+        self.assertEqual(result["problem_type"], "classification")
+
+    def test_all_metrics_present_train_and_test(self):
+        result = evaluate_classification(self.estimator, self.prepared, None)
+        for key in ("accuracy", "f1", "precision", "recall"):
+            self.assertIn(key, result["train"])
+            self.assertIn(key, result["test"])
+
+    def test_metrics_are_floats(self):
+        result = evaluate_classification(self.estimator, self.prepared, None)
+        for v in result["test"].values():
+            self.assertIsInstance(v, float)
+
+    def test_confusion_matrix_is_k_by_k(self):
+        result = evaluate_classification(self.estimator, self.prepared, None)
+        cm = result["confusion_matrix"]
+        n_classes = len(result["labels"])
+        self.assertEqual(len(cm), n_classes)
+        self.assertEqual(len(cm[0]), n_classes)
+
+    def test_per_class_report_one_row_per_class(self):
+        result = evaluate_classification(self.estimator, self.prepared, None)
+        n_classes = len(result["labels"])
+        self.assertEqual(len(result["per_class"]), n_classes)
+        for cls in result["per_class"]:
+            self.assertIn("precision", cls)
+            self.assertIn("recall", cls)
+            self.assertIn("f1", cls)
+            self.assertIn("support", cls)
+            self.assertIsInstance(cls["support"], int)
+
+    def test_string_labels_decoded_in_output(self):
+        prepared = _make_string_target_prepared()
+        est = build_estimator("logreg", 42)
+        est.fit(prepared.X_train, prepared.y_train)
+        result = evaluate_classification(est, prepared, prepared.label_map)
+        self.assertIn("cat", result["labels"])
+        self.assertIn("dog", result["labels"])
+        for sample in result["predictions_sample"]:
+            self.assertIn(sample["y_true"], ("cat", "dog"))
+            self.assertIn(sample["y_pred"], ("cat", "dog"))
+
+    def test_predictions_sample_capped_at_500(self):
+        # Synthesize a large dataset
+        np.random.seed(0)
+        n = 3000
+        df = pd.DataFrame({
+            "x1": np.random.randn(n),
+            "target": np.random.randint(0, 2, n),
+        })
+        prepared = prepare_experiment(df, "target", "classification",
+                                      ExperimentConfig(stratify=False))
+        est = build_estimator("logreg", 42)
+        est.fit(prepared.X_train, prepared.y_train)
+        result = evaluate_classification(est, prepared, None)
+        self.assertLessEqual(len(result["predictions_sample"]), 500)
+
+
+class EvaluateRegressionTest(TestCase):
+    def setUp(self):
+        self.prepared = _make_regression_prepared()
+        self.estimator = build_estimator("linreg", 42)
+        self.estimator.fit(self.prepared.X_train, self.prepared.y_train)
+
+    def test_problem_type_set(self):
+        result = evaluate_regression(self.estimator, self.prepared)
+        self.assertEqual(result["problem_type"], "regression")
+
+    def test_all_metrics_present(self):
+        result = evaluate_regression(self.estimator, self.prepared)
+        for key in ("r2", "rmse", "mae"):
+            self.assertIn(key, result["train"])
+            self.assertIn(key, result["test"])
+
+    def test_predictions_sample_has_required_keys(self):
+        result = evaluate_regression(self.estimator, self.prepared)
+        for sample in result["predictions_sample"]:
+            self.assertIn("y_true", sample)
+            self.assertIn("y_pred", sample)
+            self.assertIsInstance(sample["y_true"], float)
+
+    def test_residuals_match_y_true_minus_y_pred(self):
+        result = evaluate_regression(self.estimator, self.prepared)
+        for pred, res in zip(result["predictions_sample"], result["residuals_sample"]):
+            expected = pred["y_true"] - pred["y_pred"]
+            self.assertAlmostEqual(res["residual"], expected, places=10)
+
+    def test_no_confusion_matrix_for_regression(self):
+        result = evaluate_regression(self.estimator, self.prepared)
+        self.assertNotIn("confusion_matrix", result)
+
+
+class FeatureImportanceTest(TestCase):
+    def setUp(self):
+        self.prepared = _make_classification_prepared()
+
+    def _fit(self, algo):
+        est = build_estimator(algo, 42)
+        est.fit(self.prepared.X_train, self.prepared.y_train)
+        return est
+
+    def test_random_forest_supported(self):
+        result = compute_feature_importance(self._fit("rf_clf"), self.prepared.feature_names)
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), len(self.prepared.feature_names))
+
+    def test_decision_tree_supported(self):
+        result = compute_feature_importance(self._fit("dt_clf"), self.prepared.feature_names)
+        self.assertIsNotNone(result)
+
+    def test_logistic_regression_supported(self):
+        result = compute_feature_importance(self._fit("logreg"), self.prepared.feature_names)
+        self.assertIsNotNone(result)
+
+    def test_knn_returns_none(self):
+        result = compute_feature_importance(self._fit("knn_clf"), self.prepared.feature_names)
+        self.assertIsNone(result)
+
+    def test_svm_rbf_returns_none(self):
+        # SVC default kernel is rbf — no feature importance available
+        result = compute_feature_importance(self._fit("svm"), self.prepared.feature_names)
+        self.assertIsNone(result)
+
+    def test_sorted_descending(self):
+        result = compute_feature_importance(self._fit("rf_clf"), self.prepared.feature_names)
+        values = [item["value"] for item in result]
+        self.assertEqual(values, sorted(values, reverse=True))
+
+
+class BuildEvaluationTest(TestCase):
+    def test_classification_orchestration(self):
+        prepared = _make_classification_prepared()
+        est = build_estimator("rf_clf", 42)
+        est.fit(prepared.X_train, prepared.y_train)
+        result = build_evaluation(
+            est, prepared, "classification", prepared.label_map, prepared.feature_names
+        )
+        self.assertEqual(result["problem_type"], "classification")
+        self.assertIn("confusion_matrix", result)
+        self.assertIn("feature_importance", result)
+        self.assertIsNotNone(result["feature_importance"])
+
+    def test_regression_orchestration(self):
+        prepared = _make_regression_prepared()
+        est = build_estimator("linreg", 42)
+        est.fit(prepared.X_train, prepared.y_train)
+        result = build_evaluation(
+            est, prepared, "regression", None, prepared.feature_names
+        )
+        self.assertEqual(result["problem_type"], "regression")
+        self.assertIn("predictions_sample", result)
+        self.assertIn("residuals_sample", result)
+
+    def test_unknown_problem_type_raises(self):
+        prepared = _make_regression_prepared()
+        est = build_estimator("linreg", 42)
+        est.fit(prepared.X_train, prepared.y_train)
+        with self.assertRaises(ValueError):
+            build_evaluation(est, prepared, "bogus", None, prepared.feature_names)
+
+    def test_evaluation_is_json_serializable(self):
+        import json
+        prepared = _make_classification_prepared()
+        est = build_estimator("rf_clf", 42)
+        est.fit(prepared.X_train, prepared.y_train)
+        result = build_evaluation(
+            est, prepared, "classification", prepared.label_map, prepared.feature_names
+        )
+        # Should not raise
+        json.dumps(result)
