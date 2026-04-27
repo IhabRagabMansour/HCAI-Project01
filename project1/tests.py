@@ -1171,3 +1171,123 @@ class BuildEvaluationTest(TestCase):
         )
         # Should not raise
         json.dumps(result)
+
+
+# ── Stage 7b: persisted evaluation + model detail UI ───────────────────────
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class PersistedEvaluationTest(TestCase):
+    def _train_classification_model(self):
+        rows = []
+        for i in range(15):
+            rows.append(f"{i*0.1},{i*0.2},0")
+        for i in range(15):
+            rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("eval_clf.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "ExpEval",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        from .models import Experiment, TrainedModel
+        experiment = Experiment.objects.first()
+        self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+            "name": "EvalRF",
+            "algorithm": "rf_clf",
+            "metric": "f1",
+        })
+        return TrainedModel.objects.first()
+
+    def _train_regression_model(self):
+        rows = "\n".join(f"{i*0.1},{i*0.2 + 1.0}" for i in range(40))
+        csv = f"x,y\n{rows}\n".encode()
+        uploaded = SimpleUploadedFile("eval_reg.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "ExpRegEval",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "none",
+            "test_size": "0.2",
+            "random_seed": "42",
+            "stratify": "",
+        })
+        from .models import Experiment, TrainedModel
+        experiment = Experiment.objects.first()
+        self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+            "name": "EvalLinReg",
+            "algorithm": "linreg",
+            "metric": "rmse",
+        })
+        return TrainedModel.objects.first()
+
+    def test_evaluation_is_persisted_after_classification_training(self):
+        m = self._train_classification_model()
+        self.assertIsNotNone(m.evaluation)
+        self.assertEqual(m.evaluation["problem_type"], "classification")
+
+    def test_evaluation_contains_all_classification_metrics(self):
+        m = self._train_classification_model()
+        for key in ("accuracy", "f1", "precision", "recall"):
+            self.assertIn(key, m.evaluation["test"])
+
+    def test_evaluation_is_persisted_after_regression_training(self):
+        m = self._train_regression_model()
+        self.assertIsNotNone(m.evaluation)
+        self.assertEqual(m.evaluation["problem_type"], "regression")
+        for key in ("r2", "rmse", "mae"):
+            self.assertIn(key, m.evaluation["test"])
+
+    def test_classification_detail_shows_all_metrics(self):
+        m = self._train_classification_model()
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "Accuracy")
+        self.assertContains(response, "F1 (weighted)")
+        self.assertContains(response, "Precision (weighted)")
+        self.assertContains(response, "Recall (weighted)")
+
+    def test_classification_detail_shows_confusion_matrix(self):
+        m = self._train_classification_model()
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "Confusion matrix")
+
+    def test_classification_detail_shows_per_class_report(self):
+        m = self._train_classification_model()
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "Per-class report")
+        self.assertContains(response, "Support")
+
+    def test_regression_detail_does_not_show_confusion_matrix(self):
+        m = self._train_regression_model()
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertNotContains(response, "Confusion matrix")
+        self.assertNotContains(response, "Per-class report")
+
+    def test_regression_detail_shows_regression_metrics(self):
+        m = self._train_regression_model()
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "R²")
+        self.assertContains(response, "RMSE")
+        self.assertContains(response, "MAE")
+
+    def test_trained_metric_is_highlighted(self):
+        m = self._train_classification_model()  # trained with f1
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "trained")
+
+    def test_no_evaluation_for_old_model_shows_message(self):
+        from .models import Experiment, TrainedModel
+        # Train one normally to set up
+        m = self._train_classification_model()
+        # Simulate an old model with no evaluation
+        m.evaluation = None
+        m.save()
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "Re-train")

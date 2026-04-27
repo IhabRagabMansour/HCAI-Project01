@@ -14,43 +14,125 @@
 {% endif %}
 
 {% if model.is_trained %}
+
 <div class="p1-section">
-    <h2 class="p1-section-title">Results</h2>
+    <h2 class="p1-section-title">Summary</h2>
     <table class="p1-detail-table">
-        <tr>
-            <th>Algorithm</th>
-            <td>{{ model.algorithm_display }}</td>
-        </tr>
-        <tr>
-            <th>Metric</th>
-            <td>{{ model.metric_display }}</td>
-        </tr>
-        <tr>
-            <th>Train {{ model.metric_display }}</th>
-            <td><strong>{{ model.train_score|floatformat:4 }}</strong></td>
-        </tr>
-        <tr>
-            <th>Test {{ model.metric_display }}</th>
-            <td><strong>{{ model.test_score|floatformat:4 }}</strong></td>
-        </tr>
-        <tr>
-            <th>Training time</th>
-            <td>{{ model.train_duration_ms }} ms</td>
-        </tr>
+        <tr><th>Algorithm</th><td>{{ model.algorithm_display }}</td></tr>
+        <tr><th>Trained with metric</th><td>{{ model.metric_display }}</td></tr>
+        <tr><th>Training time</th><td>{{ model.train_duration_ms }} ms</td></tr>
         {% if model.model_file_size_kb %}
-        <tr>
-            <th>Model file</th>
-            <td>{{ model.model_file_size_kb }} KB</td>
-        </tr>
+        <tr><th>Model file</th><td>{{ model.model_file_size_kb }} KB</td></tr>
         {% endif %}
     </table>
 </div>
 
+{% if model.eval_error %}
 <div class="p1-section">
-    <div class="p1-msg p1-msg--info">
-        Detailed metrics, confusion matrix, and prediction plots will appear here in <strong>Stage 7</strong>.
+    <div class="p1-msg p1-msg--warning">
+        <strong>Evaluation failed:</strong> {{ model.eval_error }}
     </div>
 </div>
+{% elif metric_rows %}
+
+<div class="p1-section">
+    <h2 class="p1-section-title">Metrics</h2>
+    <table class="p1-detail-table">
+        <thead>
+            <tr><th>Metric</th><th>Train</th><th>Test</th></tr>
+        </thead>
+        <tbody>
+            {% for row in metric_rows %}
+            <tr>
+                <th>
+                    {{ row.display }}
+                    {% if row.is_trained_metric %}
+                        <span class="p1-trained-tag">trained</span>
+                    {% endif %}
+                </th>
+                <td{% if row.is_trained_metric %} class="p1-cell-trained"{% endif %}>
+                    {{ row.train|floatformat:4 }}
+                </td>
+                <td{% if row.is_trained_metric %} class="p1-cell-trained"{% endif %}>
+                    {{ row.test|floatformat:4 }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if cm_rows %}
+<div class="p1-section">
+    <h2 class="p1-section-title">Confusion matrix (test set)</h2>
+    <table class="p1-table p1-cm-table">
+        <thead>
+            <tr>
+                <th rowspan="2" class="p1-cm-corner">True ↓ / Predicted →</th>
+                <th colspan="{{ model.evaluation.labels|length }}">Predicted class</th>
+            </tr>
+            <tr>
+                {% for label in model.evaluation.labels %}
+                    <th>{{ label }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for label, row in cm_rows %}
+            <tr>
+                <th>{{ label }}</th>
+                {% for cell in row %}
+                    <td class="p1-cm-cell{% if forloop.counter0 == forloop.parentloop.counter0 %} p1-cm-diag{% endif %}">
+                        {{ cell }}
+                    </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="p1-section">
+    <h2 class="p1-section-title">Per-class report (test set)</h2>
+    <table class="p1-table">
+        <thead>
+            <tr>
+                <th>Class</th>
+                <th>Precision</th>
+                <th>Recall</th>
+                <th>F1</th>
+                <th>Support</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cls in model.evaluation.per_class %}
+            <tr>
+                <td><code>{{ cls.label }}</code></td>
+                <td>{{ cls.precision|floatformat:4 }}</td>
+                <td>{{ cls.recall|floatformat:4 }}</td>
+                <td>{{ cls.f1|floatformat:4 }}</td>
+                <td>{{ cls.support }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<div class="p1-section">
+    <div class="p1-msg p1-msg--info">
+        Plots (confusion matrix heatmap, predicted-vs-actual scatter, residuals, feature importance) will appear here in <strong>Stage 7c</strong>.
+    </div>
+</div>
+
+{% else %}
+<div class="p1-section">
+    <div class="p1-msg p1-msg--info">
+        No evaluation data — this model was trained before evaluation was added. Re-train to see detailed metrics.
+    </div>
+</div>
+{% endif %}
+
 {% endif %}
 
 <div class="p1-section">

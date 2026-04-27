@@ -12,7 +12,8 @@ from .services.data import (
     build_chart_data, build_histogram_data, build_boxplot_data, build_heatmap_data,
 )
 from .services.preprocess import prepare_experiment
-from .services.train import train_model_for_experiment
+from .services.train import build_estimator, train_and_score
+from .services.evaluate import build_evaluation
 
 ROWS_PER_PAGE = 25
 
@@ -292,8 +293,18 @@ def model_create(request, experiment_pk):
                 model.name = f"{model.algorithm_display} #{count + 1}"
             model.save()
 
+            estimator = None
+            prepared = None
             try:
-                result = train_model_for_experiment(experiment, model.algorithm, model.metric)
+                df = read_csv_safely(experiment.dataset.file)
+                prepared = prepare_experiment(
+                    df,
+                    experiment.dataset.target_name,
+                    experiment.dataset.problem_type,
+                    experiment.as_config(),
+                )
+                estimator = build_estimator(model.algorithm, experiment.random_seed)
+                result = train_and_score(prepared, estimator, model.metric)
                 model.model_file.save(
                     f"model_{model.pk}.joblib",
                     ContentFile(result.estimator_bytes),
@@ -305,6 +316,20 @@ def model_create(request, experiment_pk):
                 model.train_error = None
             except Exception as e:
                 model.train_error = str(e)
+
+            # Evaluation runs only if training succeeded
+            if model.train_error is None and estimator is not None and prepared is not None:
+                try:
+                    model.evaluation = build_evaluation(
+                        estimator,
+                        prepared,
+                        experiment.dataset.problem_type,
+                        prepared.label_map,
+                        prepared.feature_names,
+                    )
+                    model.eval_error = None
+                except Exception as e:
+                    model.eval_error = str(e)
 
             model.save()
             messages.success(request, f"'{model.name}' trained.")
@@ -325,10 +350,40 @@ def model_create(request, experiment_pk):
 
 def model_detail(request, pk):
     model = get_object_or_404(TrainedModel, pk=pk)
+
+    metric_rows = []
+    cm_rows = []
+    if model.evaluation:
+        ev = model.evaluation
+        if ev.get("problem_type") == "classification":
+            metric_specs = [
+                ("accuracy",  "Accuracy"),
+                ("f1",        "F1 (weighted)"),
+                ("precision", "Precision (weighted)"),
+                ("recall",    "Recall (weighted)"),
+            ]
+            cm_rows = list(zip(ev.get("labels", []), ev.get("confusion_matrix", [])))
+        else:
+            metric_specs = [
+                ("r2",   "R²"),
+                ("rmse", "RMSE"),
+                ("mae",  "MAE"),
+            ]
+        for key, display in metric_specs:
+            metric_rows.append({
+                "key": key,
+                "display": display,
+                "train": ev.get("train", {}).get(key),
+                "test": ev.get("test", {}).get(key),
+                "is_trained_metric": (key == model.metric),
+            })
+
     return render(request, "project1/model_detail.html", {
         "model": model,
         "experiment": model.experiment,
         "dataset": model.experiment.dataset,
+        "metric_rows": metric_rows,
+        "cm_rows": cm_rows,
     })
 
 

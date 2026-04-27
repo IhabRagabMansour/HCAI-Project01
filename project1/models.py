@@ -188,6 +188,9 @@ class TrainedModel(models.Model):
     train_duration_ms = models.PositiveIntegerField(null=True, blank=True)
     train_error = models.TextField(null=True, blank=True)
 
+    evaluation = models.JSONField(null=True, blank=True)
+    eval_error = models.TextField(null=True, blank=True)
+
     class Meta:
         ordering = ["-created_at"]
 

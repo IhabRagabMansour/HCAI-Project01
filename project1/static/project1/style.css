@@ -335,6 +335,51 @@
     border: 1px solid #b3d4fc;
 }
 
+/* ── "Trained with this metric" tag ── */
+.p1-trained-tag {
+    background-color: #275CB2;
+    color: white;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    margin-left: 6px;
+    font-weight: normal;
+    vertical-align: middle;
+}
+
+.p1-cell-trained {
+    background-color: #f4f7fc;
+    font-weight: 600;
+}
+
+/* ── Confusion matrix table ── */
+.p1-cm-table {
+    text-align: center;
+}
+
+.p1-cm-table th,
+.p1-cm-table td {
+    text-align: center;
+    min-width: 60px;
+}
+
+.p1-cm-corner {
+    background-color: #f4f7fc !important;
+    color: #777 !important;
+    font-weight: normal !important;
+    font-size: 13px;
+}
+
+.p1-cm-cell {
+    font-variant-numeric: tabular-nums;
+}
+
+.p1-cm-diag {
+    background-color: #d4edda !important;
+    color: #155724;
+    font-weight: 600;
+}
+
 /* ── Empty state message ── */
 .p1-empty-msg {
     text-align: center;
