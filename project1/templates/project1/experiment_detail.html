@@ -114,10 +114,67 @@
     </table>
 </div>
 
+{% if experiment.is_prepared %}
+<div class="p1-section" id="models-section">
+    <h2 class="p1-section-title">
+        Models
+        {% if models %}<span class="p1-page-info">({{ models|length }})</span>{% endif %}
+    </h2>
+
+    {% if models %}
+    <table class="p1-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Algorithm</th>
+                <th>Metric</th>
+                <th>Train</th>
+                <th>Test</th>
+                <th>Time</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in models %}
+            <tr>
+                <td>{{ m.name }}</td>
+                <td>{{ m.algorithm_display }}</td>
+                <td>{{ m.metric_display }}</td>
+                <td>{% if m.train_score is not None %}{{ m.train_score|floatformat:4 }}{% else %}—{% endif %}</td>
+                <td>{% if m.test_score is not None %}{{ m.test_score|floatformat:4 }}{% else %}—{% endif %}</td>
+                <td>{% if m.train_duration_ms is not None %}{{ m.train_duration_ms }} ms{% else %}—{% endif %}</td>
+                <td>
+                    {% if m.is_trained %}
+                        <span class="p1-badge">Trained</span>
+                    {% elif m.train_error %}
+                        <span class="p1-badge p1-badge--error">Error</span>
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{% url 'project1:model_detail' m.pk %}" class="p1-link">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="p1-empty-msg">No models trained yet. Click <strong>+ Train new model</strong> to get started.</p>
+    {% endif %}
+</div>
+{% endif %}
+
 <div class="p1-action-row">
     <a href="{% url 'project1:dataset_detail' dataset.pk %}">
         <button type="button">Back to dataset</button>
     </a>
+    {% if experiment.is_prepared %}
+    <a href="{% url 'project1:model_create' experiment.pk %}">
+        <button type="button" class="btn-success">+ Train new model</button>
+    </a>
+    {% endif %}
     <a href="{% url 'project1:experiment_delete' experiment.pk %}">
         <button type="button" class="btn-danger">Delete</button>
     </a>

@@ -1,5 +1,5 @@
 from django import forms
-from .models import Dataset, Experiment
+from .models import Dataset, Experiment, TrainedModel
 
 MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 
@@ -86,3 +86,21 @@ class ExperimentForm(forms.ModelForm):
         if not (0.10 <= v <= 0.50):
             raise forms.ValidationError("Test size must be between 0.10 and 0.50.")
         return v
+
+
+class TrainedModelForm(forms.ModelForm):
+    class Meta:
+        model = TrainedModel
+        fields = ["name", "algorithm", "metric"]
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "Leave blank to auto-name"}),
+        }
+
+    def __init__(self, *args, problem_type=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if problem_type == "classification":
+            self.fields["algorithm"].choices = TrainedModel.CLASSIFICATION_ALGOS
+            self.fields["metric"].choices    = TrainedModel.CLASSIFICATION_METRICS
+        elif problem_type == "regression":
+            self.fields["algorithm"].choices = TrainedModel.REGRESSION_ALGOS
+            self.fields["metric"].choices    = TrainedModel.REGRESSION_METRICS

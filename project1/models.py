@@ -7,6 +7,11 @@ def dataset_upload_path(instance, filename):
     return f"datasets/{today}/{filename}"
 
 
+def trained_model_upload_path(instance, filename):
+    today = timezone.now().strftime("%Y-%m-%d")
+    return f"trained_models/{today}/{filename}"
+
+
 PROBLEM_TYPE_CHOICES = [
     ("classification", "Classification"),
     ("regression", "Regression"),
@@ -136,3 +141,74 @@ class Experiment(models.Model):
             random_seed=self.random_seed,
             stratify=self.stratify,
         )
+
+
+class TrainedModel(models.Model):
+    CLASSIFICATION_ALGOS = [
+        ("logreg",  "Logistic Regression"),
+        ("rf_clf",  "Random Forest"),
+        ("svm",     "Support Vector Machine"),
+        ("knn_clf", "K-Nearest Neighbors"),
+        ("dt_clf",  "Decision Tree"),
+    ]
+    REGRESSION_ALGOS = [
+        ("linreg",  "Linear Regression"),
+        ("rf_reg",  "Random Forest"),
+        ("svr",     "Support Vector Regressor"),
+        ("knn_reg", "K-Nearest Neighbors"),
+        ("dt_reg",  "Decision Tree"),
+    ]
+    CLASSIFICATION_METRICS = [
+        ("accuracy",  "Accuracy"),
+        ("f1",        "F1 (weighted)"),
+        ("precision", "Precision (weighted)"),
+        ("recall",    "Recall (weighted)"),
+    ]
+    REGRESSION_METRICS = [
+        ("r2",   "R²"),
+        ("rmse", "RMSE"),
+        ("mae",  "MAE"),
+    ]
+    ALL_ALGOS = CLASSIFICATION_ALGOS + REGRESSION_ALGOS
+    ALL_METRICS = CLASSIFICATION_METRICS + REGRESSION_METRICS
+
+    experiment = models.ForeignKey(
+        Experiment, on_delete=models.CASCADE, related_name="models"
+    )
+    name = models.CharField(max_length=255, blank=True)
+    algorithm = models.CharField(max_length=20, choices=ALL_ALGOS)
+    metric = models.CharField(max_length=20, choices=ALL_METRICS)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    model_file = models.FileField(
+        upload_to=trained_model_upload_path, null=True, blank=True
+    )
+    train_score = models.FloatField(null=True, blank=True)
+    test_score = models.FloatField(null=True, blank=True)
+    train_duration_ms = models.PositiveIntegerField(null=True, blank=True)
+    train_error = models.TextField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.name or f"Model #{self.pk}"
+
+    @property
+    def is_trained(self):
+        return self.train_error is None and self.train_score is not None
+
+    @property
+    def algorithm_display(self):
+        return dict(self.ALL_ALGOS).get(self.algorithm, self.algorithm)
+
+    @property
+    def metric_display(self):
+        return dict(self.ALL_METRICS).get(self.metric, self.metric)
+
+    @property
+    def model_file_size_kb(self):
+        try:
+            return round(self.model_file.size / 1024, 1)
+        except (FileNotFoundError, ValueError, AttributeError):
+            return None

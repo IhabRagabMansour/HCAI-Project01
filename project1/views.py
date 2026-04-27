@@ -5,13 +5,14 @@ from django.contrib import messages
 from django.core.paginator import Paginator
 from django.http import JsonResponse
 
-from .forms import DatasetUploadForm, ExperimentForm
-from .models import Dataset, Experiment
+from .forms import DatasetUploadForm, ExperimentForm, TrainedModelForm
+from .models import Dataset, Experiment, TrainedModel
 from .services.data import (
     read_csv_safely, numeric_column_names,
     build_chart_data, build_histogram_data, build_boxplot_data, build_heatmap_data,
 )
 from .services.preprocess import prepare_experiment
+from .services.train import train_model_for_experiment
 
 ROWS_PER_PAGE = 25
 
@@ -253,6 +254,7 @@ def experiment_detail(request, pk):
     return render(request, "project1/experiment_detail.html", {
         "experiment": experiment,
         "dataset": experiment.dataset,
+        "models": list(experiment.models.all()),
     })
 
 
@@ -265,3 +267,66 @@ def experiment_delete(request, pk):
         messages.success(request, f"'{name}' deleted.")
         return redirect("project1:dataset_detail", pk=dataset_pk)
     return render(request, "project1/experiment_confirm_delete.html", {"experiment": experiment})
+
+
+def model_create(request, experiment_pk):
+    from django.core.files.base import ContentFile
+    experiment = get_object_or_404(Experiment, pk=experiment_pk)
+
+    if not experiment.is_prepared:
+        messages.error(request, "Experiment must be prepared successfully before training.")
+        return redirect("project1:experiment_detail", pk=experiment_pk)
+
+    problem_type = experiment.dataset.problem_type
+    if problem_type not in ("classification", "regression"):
+        messages.error(request, "Cannot train: dataset's problem type is unknown.")
+        return redirect("project1:experiment_detail", pk=experiment_pk)
+
+    if request.method == "POST":
+        form = TrainedModelForm(request.POST, problem_type=problem_type)
+        if form.is_valid():
+            model = form.save(commit=False)
+            model.experiment = experiment
+            if not model.name:
+                count = experiment.models.count()
+                model.name = f"{model.algorithm_display} #{count + 1}"
+            model.save()
+
+            try:
+                result = train_model_for_experiment(experiment, model.algorithm, model.metric)
+                model.model_file.save(
+                    f"model_{model.pk}.joblib",
+                    ContentFile(result.estimator_bytes),
+                    save=False,
+                )
+                model.train_score = result.train_score
+                model.test_score = result.test_score
+                model.train_duration_ms = result.train_duration_ms
+                model.train_error = None
+            except Exception as e:
+                model.train_error = str(e)
+
+            model.save()
+            messages.success(request, f"'{model.name}' trained.")
+            return redirect("project1:model_detail", pk=model.pk)
+    else:
+        if problem_type == "classification":
+            initial = {"algorithm": "logreg", "metric": "accuracy"}
+        else:
+            initial = {"algorithm": "linreg", "metric": "r2"}
+        form = TrainedModelForm(initial=initial, problem_type=problem_type)
+
+    return render(request, "project1/model_form.html", {
+        "form": form,
+        "experiment": experiment,
+        "dataset": experiment.dataset,
+    })
+
+
+def model_detail(request, pk):
+    model = get_object_or_404(TrainedModel, pk=pk)
+    return render(request, "project1/model_detail.html", {
+        "model": model,
+        "experiment": model.experiment,
+        "dataset": model.experiment.dataset,
+    })

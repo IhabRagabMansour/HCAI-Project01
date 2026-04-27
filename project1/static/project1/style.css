@@ -328,6 +328,13 @@
     border: 1px solid #ffc107;
 }
 
+/* ── Info flash message ── */
+.p1-msg--info {
+    background-color: #e7f3ff;
+    color: #1e4a9a;
+    border: 1px solid #b3d4fc;
+}
+
 /* ── Empty state message ── */
 .p1-empty-msg {
     text-align: center;

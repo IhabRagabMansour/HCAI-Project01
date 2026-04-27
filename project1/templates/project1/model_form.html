@@ -1,0 +1,83 @@
+{% extends 'project1/base.html' %}
+{% load static %}
+
+{% block page_title %}Train Model — {{ experiment.name }}{% endblock %}
+
+{% block project1_content %}
+
+<div class="p1-section">
+    <h2 class="p1-section-title">Experiment</h2>
+    <table class="p1-detail-table">
+        <tr><th>Experiment</th><td>{{ experiment.name }}</td></tr>
+        <tr><th>Dataset</th><td>{{ dataset.original_name }}</td></tr>
+        <tr><th>Problem type</th><td>{{ dataset.get_problem_type_display }}</td></tr>
+        <tr><th>Train rows</th><td>{{ experiment.n_train }}</td></tr>
+        <tr><th>Test rows</th><td>{{ experiment.n_test }}</td></tr>
+        <tr><th>Features</th><td>{{ experiment.n_features_after }}</td></tr>
+    </table>
+</div>
+
+<form method="post" class="p1-form p1-exp-form">
+    {% csrf_token %}
+
+    <div class="p1-section">
+        <h2 class="p1-section-title">Configuration</h2>
+
+        <div class="p1-form-group">
+            <label class="p1-label" for="{{ form.name.id_for_label }}">
+                Name <span class="p1-optional">(optional)</span>
+            </label>
+            {{ form.name }}
+            <p class="p1-hint">Leave blank to auto-name (e.g. "Random Forest #1").</p>
+        </div>
+
+        <div class="p1-form-group">
+            <label class="p1-label" for="{{ form.algorithm.id_for_label }}">Algorithm</label>
+            {{ form.algorithm }}
+            {% if dataset.problem_type == "classification" %}
+            <p class="p1-hint">
+                <strong>Logistic Regression</strong> — fast linear baseline.<br>
+                <strong>Random Forest</strong> — robust tree ensemble, handles non-linear data well.<br>
+                <strong>SVM</strong> — strong on small/medium datasets with clear margins.<br>
+                <strong>K-Nearest Neighbors</strong> — non-parametric, sensitive to feature scale.<br>
+                <strong>Decision Tree</strong> — interpretable but can overfit.
+            </p>
+            {% else %}
+            <p class="p1-hint">
+                <strong>Linear Regression</strong> — fast, interpretable baseline.<br>
+                <strong>Random Forest</strong> — non-linear, robust to outliers.<br>
+                <strong>SVR</strong> — good for small/medium datasets with non-linear trends.<br>
+                <strong>K-Nearest Neighbors</strong> — non-parametric, sensitive to feature scale.<br>
+                <strong>Decision Tree</strong> — interpretable but can overfit.
+            </p>
+            {% endif %}
+        </div>
+
+        <div class="p1-form-group">
+            <label class="p1-label" for="{{ form.metric.id_for_label }}">Metric</label>
+            {{ form.metric }}
+            {% if dataset.problem_type == "classification" %}
+            <p class="p1-hint">
+                <strong>Accuracy</strong> — fraction of correct predictions; best when classes are balanced.<br>
+                <strong>F1</strong> — harmonic mean of precision and recall; best for imbalanced classes.<br>
+                <strong>Precision / Recall</strong> — focus on false-positive vs false-negative trade-offs.
+            </p>
+            {% else %}
+            <p class="p1-hint">
+                <strong>R²</strong> — fraction of variance explained (higher = better; can be negative if worse than mean).<br>
+                <strong>RMSE</strong> — root mean squared error in target units (lower = better, penalizes large errors).<br>
+                <strong>MAE</strong> — mean absolute error in target units (lower = better, robust to outliers).
+            </p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="p1-action-row">
+        <a href="{% url 'project1:experiment_detail' experiment.pk %}">
+            <button type="button">Cancel</button>
+        </a>
+        <button type="submit">Train</button>
+    </div>
+</form>
+
+{% endblock %}

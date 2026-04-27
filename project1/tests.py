@@ -756,3 +756,142 @@ class TrainAndScoreTest(TestCase):
         prepared = self._classification_prepared()
         result = train_and_score(prepared, build_estimator("logreg", 42), "accuracy")
         self.assertGreaterEqual(result.train_duration_ms, 0)
+
+
+# ── Stage 6b: TrainedModel + train form + detail view integration ──────────
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class TrainedModelCreateViewTest(TestCase):
+    def setUp(self):
+        # 20 well-separated rows for stable training
+        rows = []
+        for i in range(10):
+            rows.append(f"{i*0.1},{i*0.2},0")
+        for i in range(10):
+            rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("clf.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        self.dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "Exp1",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        from .models import Experiment
+        self.experiment = Experiment.objects.first()
+
+    def test_create_form_get_returns_200(self):
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/models/new/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_create_form_shows_classification_algorithms(self):
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/models/new/")
+        self.assertContains(response, "Logistic Regression")
+        self.assertContains(response, "Random Forest")
+        self.assertContains(response, "Accuracy")
+        self.assertNotContains(response, "Linear Regression")
+        self.assertNotContains(response, "RMSE")
+
+    def test_post_creates_trained_model(self):
+        from .models import TrainedModel
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "My Model",
+            "algorithm": "logreg",
+            "metric": "accuracy",
+        })
+        self.assertEqual(TrainedModel.objects.count(), 1)
+        m = TrainedModel.objects.first()
+        self.assertEqual(m.name, "My Model")
+        self.assertEqual(m.experiment, self.experiment)
+
+    def test_post_populates_scores_and_file(self):
+        from .models import TrainedModel
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "Scored",
+            "algorithm": "logreg",
+            "metric": "accuracy",
+        })
+        m = TrainedModel.objects.first()
+        self.assertTrue(m.is_trained)
+        self.assertIsNotNone(m.train_score)
+        self.assertIsNotNone(m.test_score)
+        self.assertIsNotNone(m.train_duration_ms)
+        self.assertTrue(m.model_file.name)
+        self.assertGreater(m.model_file.size, 0)
+
+    def test_post_auto_names_when_blank(self):
+        from .models import TrainedModel
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "",
+            "algorithm": "rf_clf",
+            "metric": "f1",
+        })
+        m = TrainedModel.objects.first()
+        self.assertIn("Random Forest", m.name)
+
+    def test_post_redirects_to_model_detail(self):
+        from .models import TrainedModel
+        response = self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "Redir",
+            "algorithm": "logreg",
+            "metric": "accuracy",
+        })
+        m = TrainedModel.objects.first()
+        self.assertRedirects(response, f"/project1/models/{m.pk}/")
+
+    def test_model_detail_returns_200(self):
+        from .models import TrainedModel
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "Det",
+            "algorithm": "logreg",
+            "metric": "accuracy",
+        })
+        m = TrainedModel.objects.first()
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Det")
+
+    def test_experiment_detail_lists_trained_models(self):
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "ListMe",
+            "algorithm": "logreg",
+            "metric": "accuracy",
+        })
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/")
+        self.assertContains(response, "ListMe")
+        self.assertContains(response, "Logistic Regression")
+
+    def test_train_button_visible_on_prepared_experiment(self):
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/")
+        self.assertContains(response, "Train new model")
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class TrainedModelRegressionFlowTest(TestCase):
+    def test_regression_form_shows_regression_options(self):
+        rows = "\n".join(f"{i*0.1},{i*0.2 + 1.0}" for i in range(40))
+        csv = f"x,y\n{rows}\n".encode()
+        uploaded = SimpleUploadedFile("reg.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "ExpReg",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "none",
+            "test_size": "0.2",
+            "random_seed": "42",
+            "stratify": "",  # not applicable for regression
+        })
+        from .models import Experiment
+        experiment = Experiment.objects.first()
+
+        response = self.client.get(f"/project1/experiments/{experiment.pk}/models/new/")
+        self.assertContains(response, "Linear Regression")
+        self.assertContains(response, "RMSE")
+        self.assertNotContains(response, "Logistic Regression")
+        self.assertNotContains(response, "Accuracy")
