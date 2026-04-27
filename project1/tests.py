@@ -17,6 +17,7 @@ from .services.evaluate import (
     evaluate_classification, evaluate_regression,
     compute_feature_importance, build_evaluation,
 )
+from .services.pipeline import build_preprocessing, build_full_pipeline
 
 import numpy as np
 import pandas as pd
@@ -390,12 +391,16 @@ class PrepareExperimentTest(TestCase):
         np.testing.assert_array_equal(r1.X_train, r2.X_train)
         np.testing.assert_array_equal(r1.y_train, r2.y_train)
 
-    def test_no_nan_in_output(self):
+    def test_no_nan_after_pipeline_fit(self):
+        # After Stage 8: X_train is RAW (still has NaN until pipeline runs).
+        # The contract is that the FITTED pipeline produces NaN-free output.
         df = self.df.copy()
         df.loc[0, "x1"] = float("nan")
         result = prepare_experiment(df, "target", "classification", self.config)
-        self.assertFalse(np.isnan(result.X_train).any())
-        self.assertFalse(np.isnan(result.X_test).any())
+        from sklearn.base import clone
+        fitted = clone(result.preprocessing).fit(result.X_train)
+        transformed = fitted.transform(result.X_train)
+        self.assertFalse(np.isnan(np.asarray(transformed, dtype=float)).any())
 
     def test_onehot_expands_features(self):
         df = pd.DataFrame({
@@ -717,48 +722,45 @@ class TrainAndScoreTest(TestCase):
 
     def test_classification_logreg_high_accuracy(self):
         prepared = self._classification_prepared()
-        estimator = build_estimator("logreg", 42)
-        result = train_and_score(prepared, estimator, "accuracy")
+        result = train_and_score(prepared, "logreg", "accuracy", random_seed=42)
         self.assertGreater(result.test_score, 0.85)
         self.assertGreater(result.train_score, 0.85)
 
     def test_classification_f1_metric(self):
         prepared = self._classification_prepared()
-        estimator = build_estimator("rf_clf", 42)
-        result = train_and_score(prepared, estimator, "f1")
+        result = train_and_score(prepared, "rf_clf", "f1", random_seed=42)
         self.assertGreater(result.test_score, 0.85)
 
     def test_regression_linreg_high_r2(self):
         prepared = self._regression_prepared()
-        estimator = build_estimator("linreg", 42)
-        result = train_and_score(prepared, estimator, "r2")
+        result = train_and_score(prepared, "linreg", "r2", random_seed=42)
         self.assertGreater(result.test_score, 0.95)
 
     def test_regression_rmse_low(self):
         prepared = self._regression_prepared()
-        estimator = build_estimator("linreg", 42)
-        result = train_and_score(prepared, estimator, "rmse")
+        result = train_and_score(prepared, "linreg", "rmse", random_seed=42)
         self.assertLess(result.test_score, 0.5)
 
-    def test_estimator_bytes_nonempty(self):
+    def test_pipeline_bytes_nonempty(self):
         prepared = self._classification_prepared()
-        result = train_and_score(prepared, build_estimator("logreg", 42), "accuracy")
-        self.assertGreater(len(result.estimator_bytes), 0)
+        result = train_and_score(prepared, "logreg", "accuracy", random_seed=42)
+        self.assertGreater(len(result.pipeline_bytes), 0)
 
-    def test_pickled_estimator_roundtrips(self):
+    def test_pickled_pipeline_roundtrips(self):
+        # The whole Pipeline (preprocessor + estimator) is what's saved now,
+        # and reloading it should yield byte-for-byte identical predictions.
         import joblib, io
         prepared = self._classification_prepared()
-        result = train_and_score(prepared, build_estimator("logreg", 42), "accuracy")
-        loaded = joblib.load(io.BytesIO(result.estimator_bytes))
-        # Loaded estimator should produce identical predictions
+        result = train_and_score(prepared, "logreg", "accuracy", random_seed=42)
+        loaded = joblib.load(io.BytesIO(result.pipeline_bytes))
         np.testing.assert_array_equal(
             loaded.predict(prepared.X_test),
-            np.asarray(loaded.predict(prepared.X_test)),
+            result.pipeline.predict(prepared.X_test),
         )
 
     def test_duration_is_recorded(self):
         prepared = self._classification_prepared()
-        result = train_and_score(prepared, build_estimator("logreg", 42), "accuracy")
+        result = train_and_score(prepared, "logreg", "accuracy", random_seed=42)
         self.assertGreaterEqual(result.train_duration_ms, 0)
 
 
@@ -1503,3 +1505,193 @@ class ExperimentCompareRegressionTest(TestCase):
         self.assertContains(response, "RMSE")
         self.assertContains(response, "MAE")
         self.assertNotContains(response, "Accuracy")
+
+
+# ── Stage 8a: pipeline construction unit tests ─────────────────────────────
+
+class BuildPreprocessingTest(TestCase):
+    def test_returns_column_transformer(self):
+        from sklearn.compose import ColumnTransformer
+        ct = build_preprocessing(ExperimentConfig(), ["a", "b"], ["c"])
+        self.assertIsInstance(ct, ColumnTransformer)
+
+    def test_numeric_only_has_one_branch(self):
+        ct = build_preprocessing(ExperimentConfig(), ["a", "b"], [])
+        self.assertEqual(len(ct.transformers), 1)
+        self.assertEqual(ct.transformers[0][0], "num")
+
+    def test_categorical_only_has_one_branch(self):
+        ct = build_preprocessing(ExperimentConfig(), [], ["c"])
+        self.assertEqual(len(ct.transformers), 1)
+        self.assertEqual(ct.transformers[0][0], "cat")
+
+    def test_both_branches_when_both_column_types_present(self):
+        ct = build_preprocessing(ExperimentConfig(), ["a"], ["b"])
+        names = [t[0] for t in ct.transformers]
+        self.assertIn("num", names)
+        self.assertIn("cat", names)
+
+    def test_drop_encoding_excludes_categorical_branch(self):
+        ct = build_preprocessing(
+            ExperimentConfig(categorical_encoding="drop"), ["a"], ["b"]
+        )
+        names = [t[0] for t in ct.transformers]
+        self.assertIn("num", names)
+        self.assertNotIn("cat", names)
+
+    def test_onehot_encoder_present_for_onehot_strategy(self):
+        ct = build_preprocessing(
+            ExperimentConfig(categorical_encoding="onehot"), [], ["c"]
+        )
+        from sklearn.preprocessing import OneHotEncoder
+        cat_pipe = ct.transformers[0][1]
+        encoder = dict(cat_pipe.steps).get("encoder")
+        self.assertIsInstance(encoder, OneHotEncoder)
+
+    def test_ordinal_encoder_present_for_label_strategy(self):
+        ct = build_preprocessing(
+            ExperimentConfig(categorical_encoding="label"), [], ["c"]
+        )
+        from sklearn.preprocessing import OrdinalEncoder
+        cat_pipe = ct.transformers[0][1]
+        encoder = dict(cat_pipe.steps).get("encoder")
+        self.assertIsInstance(encoder, OrdinalEncoder)
+
+    def test_standard_scaler_present_for_standard_scaling(self):
+        ct = build_preprocessing(
+            ExperimentConfig(scaling="standard"), ["x"], []
+        )
+        from sklearn.preprocessing import StandardScaler
+        num_pipe = ct.transformers[0][1]
+        scaler = dict(num_pipe.steps).get("scaler")
+        self.assertIsInstance(scaler, StandardScaler)
+
+    def test_minmax_scaler_present_for_minmax_scaling(self):
+        ct = build_preprocessing(
+            ExperimentConfig(scaling="minmax"), ["x"], []
+        )
+        from sklearn.preprocessing import MinMaxScaler
+        num_pipe = ct.transformers[0][1]
+        scaler = dict(num_pipe.steps).get("scaler")
+        self.assertIsInstance(scaler, MinMaxScaler)
+
+    def test_no_scaler_when_scaling_none(self):
+        ct = build_preprocessing(
+            ExperimentConfig(scaling="none", missing_strategy="drop"), ["x"], []
+        )
+        # With missing="drop" + scaling="none", the numeric branch is just passthrough.
+        num_pipe = ct.transformers[0][1]
+        step_names = [name for name, _ in num_pipe.steps]
+        self.assertNotIn("scaler", step_names)
+
+    def test_imputer_present_for_mean_mode(self):
+        ct = build_preprocessing(
+            ExperimentConfig(missing_strategy="mean_mode"), ["x"], ["c"]
+        )
+        from sklearn.impute import SimpleImputer
+        num_pipe = ct.transformers[0][1]
+        imputer = dict(num_pipe.steps).get("imputer")
+        self.assertIsInstance(imputer, SimpleImputer)
+        self.assertEqual(imputer.strategy, "mean")
+        cat_pipe = ct.transformers[1][1]
+        cat_imputer = dict(cat_pipe.steps).get("imputer")
+        self.assertEqual(cat_imputer.strategy, "most_frequent")
+
+    def test_imputer_with_zero_empty_strategy(self):
+        ct = build_preprocessing(
+            ExperimentConfig(missing_strategy="zero_empty"), ["x"], ["c"]
+        )
+        num_pipe = ct.transformers[0][1]
+        imputer = dict(num_pipe.steps).get("imputer")
+        self.assertEqual(imputer.strategy, "constant")
+        self.assertEqual(imputer.fill_value, 0)
+
+    def test_fit_transform_smoke(self):
+        # ColumnTransformer should fit + transform a small DataFrame without error.
+        ct = build_preprocessing(ExperimentConfig(), ["x1"], ["c1"])
+        df = pd.DataFrame({
+            "x1": [1.0, 2.0, 3.0, float("nan")],
+            "c1": ["a", "b", "a", "b"],
+        })
+        out = ct.fit_transform(df)
+        self.assertEqual(out.shape[0], 4)
+
+
+class BuildFullPipelineTest(TestCase):
+    def test_returns_pipeline_with_preprocessor_and_estimator(self):
+        from sklearn.pipeline import Pipeline as SkPipeline
+        ct = build_preprocessing(ExperimentConfig(), ["a"], [])
+        from sklearn.linear_model import LogisticRegression
+        pipe = build_full_pipeline(ct, LogisticRegression())
+        self.assertIsInstance(pipe, SkPipeline)
+        self.assertEqual([n for n, _ in pipe.steps], ["preprocessor", "estimator"])
+
+    def test_end_to_end_classification_on_two_cluster_data(self):
+        # Two well-separated clusters → near-perfect classification accuracy.
+        np.random.seed(0)
+        df = pd.DataFrame({
+            "x1": np.concatenate([np.random.randn(50), np.random.randn(50) + 5]),
+            "x2": np.concatenate([np.random.randn(50), np.random.randn(50) + 5]),
+        })
+        y = np.array([0] * 50 + [1] * 50)
+
+        ct = build_preprocessing(ExperimentConfig(), ["x1", "x2"], [])
+        from sklearn.linear_model import LogisticRegression
+        pipe = build_full_pipeline(ct, LogisticRegression(random_state=42, max_iter=1000))
+        pipe.fit(df, y)
+        accuracy = (pipe.predict(df) == y).mean()
+        self.assertGreater(accuracy, 0.9)
+
+    def test_pipeline_accepts_mixed_dtype_dataframe(self):
+        # Confirm the pipeline can fit + predict on a DataFrame with both
+        # numeric and categorical columns (the main motivation for the refactor).
+        ct = build_preprocessing(
+            ExperimentConfig(categorical_encoding="onehot", scaling="standard"),
+            ["x1"], ["cat"],
+        )
+        from sklearn.linear_model import LogisticRegression
+        pipe = build_full_pipeline(ct, LogisticRegression(random_state=42))
+        df = pd.DataFrame({
+            "x1": [float(i) for i in range(10)],
+            "cat": ["a", "b"] * 5,
+        })
+        y = np.array([0, 1] * 5)
+        pipe.fit(df, y)
+        # Should run without error
+        pipe.predict(df)
+
+    def test_pipeline_predict_handles_unseen_category(self):
+        # OneHotEncoder with handle_unknown='ignore' should let an unseen
+        # category come through at predict time without crashing.
+        ct = build_preprocessing(
+            ExperimentConfig(categorical_encoding="onehot"),
+            ["x1"], ["cat"],
+        )
+        from sklearn.linear_model import LogisticRegression
+        pipe = build_full_pipeline(ct, LogisticRegression(random_state=42))
+        df_train = pd.DataFrame({"x1": [1.0, 2.0, 3.0, 4.0], "cat": ["a", "b", "a", "b"]})
+        df_pred  = pd.DataFrame({"x1": [5.0],                 "cat": ["c"]})  # unseen
+        pipe.fit(df_train, np.array([0, 1, 0, 1]))
+        pipe.predict(df_pred)  # must not raise
+
+    def test_serialization_roundtrip_preserves_predictions(self):
+        # joblib-pickle the whole pipeline, reload, predictions must be identical.
+        import joblib, io
+        np.random.seed(0)
+        df = pd.DataFrame({
+            "x1": np.concatenate([np.random.randn(30), np.random.randn(30) + 4]),
+        })
+        y = np.array([0] * 30 + [1] * 30)
+        ct = build_preprocessing(ExperimentConfig(), ["x1"], [])
+        from sklearn.linear_model import LogisticRegression
+        pipe = build_full_pipeline(ct, LogisticRegression(random_state=42))
+        pipe.fit(df, y)
+        before = pipe.predict(df)
+
+        buf = io.BytesIO()
+        joblib.dump(pipe, buf)
+        loaded = joblib.load(io.BytesIO(buf.getvalue()))
+        after = loaded.predict(df)
+        np.testing.assert_array_equal(before, after)
+
+

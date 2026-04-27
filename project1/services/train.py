@@ -27,7 +27,8 @@ REGRESSION_METRICS     = ("r2", "rmse", "mae")
 
 @dataclass
 class TrainResult:
-    estimator_bytes: bytes      # joblib-pickled sklearn estimator
+    pipeline: object            # in-memory fitted sklearn Pipeline (preprocessor + estimator)
+    pipeline_bytes: bytes       # joblib-serialized version of the same pipeline
     train_score: float
     test_score: float
     train_duration_ms: int
@@ -85,43 +86,38 @@ def compute_score(y_true, y_pred, metric: str) -> float:
 
 # ── Train + score ───────────────────────────────────────────────────────────
 
-def train_and_score(prepared: PreparedData, estimator, metric: str) -> TrainResult:
-    """Fit estimator on train data, score train + test sets using the chosen metric."""
+def train_and_score(
+    prepared: PreparedData,
+    algorithm: str,
+    metric: str,
+    random_seed: int = 42,
+) -> TrainResult:
+    """Build a full sklearn Pipeline (preprocessor + fresh estimator), fit it on
+    raw X_train, score on train + test using the chosen metric, return the
+    fitted pipeline (both in-memory and joblib-serialized).
+    """
+    from .pipeline import build_full_pipeline
+
+    estimator = build_estimator(algorithm, random_seed)
+    pipeline = build_full_pipeline(prepared.preprocessing, estimator)
+
     t0 = time.perf_counter()
-    estimator.fit(prepared.X_train, prepared.y_train)
+    pipeline.fit(prepared.X_train, prepared.y_train)
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
-    y_train_pred = estimator.predict(prepared.X_train)
-    y_test_pred  = estimator.predict(prepared.X_test)
+    y_train_pred = pipeline.predict(prepared.X_train)
+    y_test_pred  = pipeline.predict(prepared.X_test)
 
     train_score = compute_score(prepared.y_train, y_train_pred, metric)
     test_score  = compute_score(prepared.y_test,  y_test_pred,  metric)
 
     buf = io.BytesIO()
-    joblib.dump(estimator, buf)
+    joblib.dump(pipeline, buf)
 
     return TrainResult(
-        estimator_bytes=buf.getvalue(),
+        pipeline=pipeline,
+        pipeline_bytes=buf.getvalue(),
         train_score=train_score,
         test_score=test_score,
         train_duration_ms=elapsed_ms,
     )
-
-
-# ── Orchestrator (used by views in Stage 6b) ────────────────────────────────
-
-def train_model_for_experiment(experiment, algorithm: str, metric: str) -> TrainResult:
-    """Re-run preprocessing for the experiment and train a model on the result."""
-    # Local imports avoid circular deps with the data/preprocess services.
-    from .data import read_csv_safely
-    from .preprocess import prepare_experiment
-
-    df = read_csv_safely(experiment.dataset.file)
-    prepared = prepare_experiment(
-        df,
-        experiment.dataset.target_name,
-        experiment.dataset.problem_type,
-        experiment.as_config(),
-    )
-    estimator = build_estimator(algorithm, experiment.random_seed)
-    return train_and_score(prepared, estimator, metric)

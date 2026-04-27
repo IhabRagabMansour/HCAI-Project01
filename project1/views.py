@@ -12,7 +12,7 @@ from .services.data import (
     build_chart_data, build_histogram_data, build_boxplot_data, build_heatmap_data,
 )
 from .services.preprocess import prepare_experiment
-from .services.train import build_estimator, train_and_score
+from .services.train import train_and_score
 from .services.evaluate import build_evaluation
 
 ROWS_PER_PAGE = 25
@@ -293,7 +293,7 @@ def model_create(request, experiment_pk):
                 model.name = f"{model.algorithm_display} #{count + 1}"
             model.save()
 
-            estimator = None
+            pipeline = None
             prepared = None
             try:
                 df = read_csv_safely(experiment.dataset.file)
@@ -303,11 +303,14 @@ def model_create(request, experiment_pk):
                     experiment.dataset.problem_type,
                     experiment.as_config(),
                 )
-                estimator = build_estimator(model.algorithm, experiment.random_seed)
-                result = train_and_score(prepared, estimator, model.metric)
+                result = train_and_score(
+                    prepared, model.algorithm, model.metric,
+                    random_seed=experiment.random_seed,
+                )
+                pipeline = result.pipeline
                 model.model_file.save(
                     f"model_{model.pk}.joblib",
-                    ContentFile(result.estimator_bytes),
+                    ContentFile(result.pipeline_bytes),
                     save=False,
                 )
                 model.train_score = result.train_score
@@ -318,10 +321,10 @@ def model_create(request, experiment_pk):
                 model.train_error = str(e)
 
             # Evaluation runs only if training succeeded
-            if model.train_error is None and estimator is not None and prepared is not None:
+            if model.train_error is None and pipeline is not None and prepared is not None:
                 try:
                     model.evaluation = build_evaluation(
-                        estimator,
+                        pipeline,
                         prepared,
                         experiment.dataset.problem_type,
                         prepared.label_map,

@@ -24,10 +24,20 @@ class ExperimentConfig:
 
 @dataclass
 class PreparedData:
-    X_train: np.ndarray
-    X_test: np.ndarray
+    """Output of prepare_experiment.
+
+    After the Stage 8 pipeline refactor:
+    - X_train / X_test are raw pandas DataFrames (NOT yet transformed)
+    - preprocessing is an un-fit sklearn ColumnTransformer; train_and_score
+      wraps it with the estimator into a single Pipeline and fits both at once
+    - feature_names / n_features_after describe what comes OUT of the
+      preprocessor once it's fitted (computed via a clone fit on X_train)
+    """
+    X_train: pd.DataFrame
+    X_test: pd.DataFrame
     y_train: np.ndarray
     y_test: np.ndarray
+    preprocessing: object      # un-fit ColumnTransformer
     feature_names: list[str]
     label_map: dict | None     # class name → int for string classification targets
     n_features_before: int
@@ -141,6 +151,16 @@ def prepare_experiment(
     problem_type: str,
     config: ExperimentConfig,
 ) -> PreparedData:
+    """Prepare data for training via a sklearn Pipeline.
+
+    Unlike the pre-Stage-8 implementation, this does NOT eagerly transform X.
+    Instead it returns raw X_train / X_test + an un-fit ColumnTransformer.
+    train_and_score combines this preprocessor with an estimator into a full
+    Pipeline that fits both in one step (and is saved together for prediction).
+    """
+    from sklearn.base import clone
+    from .pipeline import build_preprocessing
+
     if target_name not in df.columns:
         raise ValueError(f"Target column {target_name!r} not found in DataFrame.")
 
@@ -148,45 +168,70 @@ def prepare_experiment(
     y = df[target_name].copy()
     n_features_before = X.shape[1]
 
-    # 1 — missing values (apply jointly so dropped rows stay aligned)
-    combined = pd.concat([X, y.rename("__target__")], axis=1)
-    combined = handle_missing(combined, config.missing_strategy)
-    if combined.empty:
-        raise ValueError("No rows remain after applying missing-value strategy.")
-    y = combined.pop("__target__")
-    X = combined
+    # 1 — "drop" missing strategy is applied upstream of the pipeline because
+    #     SimpleImputer can't drop rows. Other strategies happen inside the
+    #     pipeline's imputer step.
+    if config.missing_strategy == "drop":
+        combined = pd.concat([X, y.rename("__target__")], axis=1).dropna().reset_index(drop=True)
+        if combined.empty:
+            raise ValueError("No rows remain after applying missing-value strategy.")
+        y = combined.pop("__target__")
+        X = combined
 
-    # 2 — encode features
-    X_enc, feature_names = encode_categorical(X, config.categorical_encoding)
-    if X_enc.shape[1] == 0:
+    # 2 — Identify column types
+    num_cols = [c for c in X.columns if pd.api.types.is_numeric_dtype(X[c])]
+    cat_cols = [c for c in X.columns if not pd.api.types.is_numeric_dtype(X[c])]
+
+    # 3 — "drop" categorical encoding removes those columns entirely
+    if config.categorical_encoding == "drop" and cat_cols:
+        X = X.drop(columns=cat_cols)
+        cat_cols = []
+
+    if X.shape[1] == 0:
         raise ValueError("No features remain after encoding (all columns were categorical and strategy='drop').")
-    n_features_after = X_enc.shape[1]
 
-    # 3 — encode target
+    # 4 — encode target (LabelEncoder only for string classification targets)
     y_enc, label_map = encode_target(y, problem_type)
 
-    # 4 — train/test split (with stratify fallback)
-    X_arr = X_enc.to_numpy(dtype=float)
+    # 5 — train/test split (with stratify fallback)
     wants_stratify = config.stratify and problem_type == "classification"
     try:
-        X_train, X_test, y_train, y_test = split_train_test(
-            X_arr, y_enc, config.test_size, config.random_seed, stratify_flag=wants_stratify
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y_enc,
+            test_size=config.test_size,
+            random_state=config.random_seed,
+            stratify=y_enc if wants_stratify else None,
         )
         stratify_used = wants_stratify
     except ValueError:
-        X_train, X_test, y_train, y_test = split_train_test(
-            X_arr, y_enc, config.test_size, config.random_seed, stratify_flag=False
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y_enc,
+            test_size=config.test_size,
+            random_state=config.random_seed,
         )
         stratify_used = False
 
-    # 5 — scale (fit on train only to prevent data leakage)
-    X_train, X_test = scale_features(X_train, X_test, config.scaling)
+    X_train = X_train.reset_index(drop=True)
+    X_test = X_test.reset_index(drop=True)
+
+    # 6 — Build un-fit preprocessing pipeline. To populate feature_names and
+    #     n_features_after for the Experiment summary UI, fit a CLONE on X_train
+    #     and discard it — the original returned object stays un-fit so train
+    #     can wrap it freshly with each new estimator.
+    preprocessing = build_preprocessing(config, num_cols, cat_cols)
+    try:
+        clone_fitted = clone(preprocessing).fit(X_train)
+        feature_names = list(clone_fitted.get_feature_names_out())
+    except Exception:
+        feature_names = list(X_train.columns)
+    n_features_after = len(feature_names)
 
     return PreparedData(
         X_train=X_train,
         X_test=X_test,
         y_train=y_train,
         y_test=y_test,
+        preprocessing=preprocessing,
         feature_names=feature_names,
         label_map=label_map,
         n_features_before=n_features_before,

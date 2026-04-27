@@ -137,8 +137,18 @@ def evaluate_regression(estimator, prepared: PreparedData) -> dict:
 
 # ── Feature importance ─────────────────────────────────────────────────────
 
-def compute_feature_importance(estimator, feature_names: list[str]) -> list[dict] | None:
-    """Return [{name, value}, ...] sorted desc, or None when not supported."""
+def compute_feature_importance(estimator_or_pipeline, feature_names: list[str]) -> list[dict] | None:
+    """Return [{name, value}, ...] sorted desc, or None when not supported.
+
+    Accepts either a bare estimator or a sklearn Pipeline (in which case the
+    final 'estimator' step is unwrapped automatically).
+    """
+    # Unwrap if it's a Pipeline with the standard "estimator" step name.
+    if hasattr(estimator_or_pipeline, "named_steps") and "estimator" in estimator_or_pipeline.named_steps:
+        estimator = estimator_or_pipeline.named_steps["estimator"]
+    else:
+        estimator = estimator_or_pipeline
+
     importances = None
 
     # Tree-based and ensemble: feature_importances_
