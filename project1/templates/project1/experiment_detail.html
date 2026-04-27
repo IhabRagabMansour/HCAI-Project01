@@ -175,6 +175,11 @@
         <button type="button" class="btn-success">+ Train new model</button>
     </a>
     {% endif %}
+    {% if models|length >= 2 %}
+    <a href="{% url 'project1:experiment_compare' experiment.pk %}">
+        <button type="button">⇄ Compare models</button>
+    </a>
+    {% endif %}
     <a href="{% url 'project1:experiment_delete' experiment.pk %}">
         <button type="button" class="btn-danger">Delete</button>
     </a>

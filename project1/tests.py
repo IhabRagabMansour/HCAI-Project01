@@ -1384,3 +1384,122 @@ class ModelDetailPlotsTest(TestCase):
         self.assertContains(response, 'id="model-evaluation"')
         # The matrix data should be in the JSON
         self.assertContains(response, "confusion_matrix")
+
+
+# ── Stage 7d: experiment compare view ──────────────────────────────────────
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ExperimentCompareTest(TestCase):
+    def setUp(self):
+        rows = []
+        for i in range(15):
+            rows.append(f"{i*0.1},{i*0.2},0")
+        for i in range(15):
+            rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("compare.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        from .models import Dataset, Experiment
+        self.dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "ExpCmp",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        self.experiment = Experiment.objects.first()
+
+    def _train(self, name, algorithm, metric):
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": name,
+            "algorithm": algorithm,
+            "metric": metric,
+        })
+
+    def test_compare_view_returns_200_with_zero_models(self):
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/compare/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "No trained models")
+
+    def test_compare_view_lists_models(self):
+        self._train("LogReg M", "logreg", "accuracy")
+        self._train("RF M", "rf_clf", "f1")
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/compare/")
+        self.assertContains(response, "LogReg M")
+        self.assertContains(response, "RF M")
+
+    def test_compare_view_shows_all_metrics(self):
+        self._train("M1", "logreg", "accuracy")
+        self._train("M2", "rf_clf", "f1")
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/compare/")
+        for label in ("Accuracy", "F1 (weighted)", "Precision", "Recall"):
+            self.assertContains(response, label)
+
+    def test_compare_view_marks_best_metric(self):
+        self._train("M1", "logreg", "accuracy")
+        self._train("M2", "rf_clf", "f1")
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/compare/")
+        # Best cell should appear (★ marker)
+        self.assertContains(response, "★")
+
+    def test_compare_button_hidden_with_zero_models(self):
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/")
+        self.assertNotContains(response, "Compare models")
+
+    def test_compare_button_hidden_with_one_model(self):
+        self._train("Only", "logreg", "accuracy")
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/")
+        self.assertNotContains(response, "Compare models")
+
+    def test_compare_button_visible_with_two_models(self):
+        self._train("A", "logreg", "accuracy")
+        self._train("B", "rf_clf", "f1")
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/")
+        self.assertContains(response, "Compare models")
+
+    def test_compare_view_has_chart_canvas_and_payload(self):
+        self._train("A", "logreg", "accuracy")
+        self._train("B", "rf_clf", "accuracy")
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/compare/")
+        self.assertContains(response, 'id="compare-chart"')
+        self.assertContains(response, 'id="compare-payload"')
+        self.assertContains(response, "compare_chart.js")
+
+    def test_compare_view_metric_param_persisted(self):
+        self._train("A", "logreg", "accuracy")
+        self._train("B", "rf_clf", "accuracy")
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/compare/?metric=f1")
+        # Selected metric should be f1
+        self.assertContains(response, '<option value="f1" selected')
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ExperimentCompareRegressionTest(TestCase):
+    def test_regression_compare_shows_regression_metrics(self):
+        rows = "\n".join(f"{i*0.1},{i*0.2 + 1.0}" for i in range(40))
+        csv = f"x,y\n{rows}\n".encode()
+        uploaded = SimpleUploadedFile("compreg.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        from .models import Dataset, Experiment
+        dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "RegCmp",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "none",
+            "test_size": "0.2",
+            "random_seed": "42",
+            "stratify": "",
+        })
+        experiment = Experiment.objects.first()
+        for name, algo in [("LR", "linreg"), ("RF", "rf_reg")]:
+            self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+                "name": name, "algorithm": algo, "metric": "r2",
+            })
+        response = self.client.get(f"/project1/experiments/{experiment.pk}/compare/")
+        self.assertContains(response, "R²")
+        self.assertContains(response, "RMSE")
+        self.assertContains(response, "MAE")
+        self.assertNotContains(response, "Accuracy")

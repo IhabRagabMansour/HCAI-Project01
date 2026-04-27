@@ -380,6 +380,39 @@
     font-weight: 600;
 }
 
+/* ── Comparison table ── */
+.p1-compare-table {
+    text-align: center;
+}
+
+.p1-compare-table th,
+.p1-compare-table td {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.p1-compare-table tbody th {
+    background-color: #f4f7fc;
+    color: #275CB2;
+    text-align: left;
+    font-weight: 600;
+}
+
+.p1-compare-best {
+    background-color: #fff3cd !important;
+    color: #856404;
+    font-weight: 700;
+}
+
+.p1-link--white {
+    color: white !important;
+}
+
+.p1-link--white:hover {
+    color: white !important;
+    text-decoration: underline;
+}
+
 /* ── Empty state message ── */
 .p1-empty-msg {
     text-align: center;

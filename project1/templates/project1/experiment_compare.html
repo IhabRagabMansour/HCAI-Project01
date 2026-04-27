@@ -1,0 +1,87 @@
+{% extends 'project1/base.html' %}
+{% load static %}
+
+{% block page_title %}Compare — {{ experiment.name }}{% endblock %}
+
+{% block project1_content %}
+
+<div class="p1-section">
+    <h2 class="p1-section-title">Compare Models</h2>
+    <table class="p1-detail-table">
+        <tr><th>Experiment</th><td>{{ experiment.name }}</td></tr>
+        <tr><th>Dataset</th><td>{{ dataset.original_name }}</td></tr>
+        <tr><th>Problem type</th><td>{{ dataset.get_problem_type_display }}</td></tr>
+        <tr><th>Models compared</th><td>{{ models|length }}</td></tr>
+    </table>
+</div>
+
+{% if not models %}
+<div class="p1-section">
+    <p class="p1-empty-msg">No trained models in this experiment yet.</p>
+</div>
+
+{% else %}
+
+<div class="p1-section">
+    <h2 class="p1-section-title">Bar chart</h2>
+    <div class="p1-chart-controls">
+        <label class="p1-chart-label">Metric
+            <select id="compare-metric" class="p1-chart-select">
+                {% for key, display, direction in metric_specs %}
+                    <option value="{{ key }}"{% if key == selected_metric_key %} selected{% endif %}>{{ display }}</option>
+                {% endfor %}
+            </select>
+        </label>
+    </div>
+    <div class="p1-chart-wrap">
+        <canvas id="compare-chart"></canvas>
+    </div>
+</div>
+
+<div class="p1-section">
+    <h2 class="p1-section-title">Side-by-side</h2>
+    <p class="p1-hint" style="text-align:center;">Best value per row marked with ★</p>
+    <div class="p1-table-scroll">
+        <table class="p1-table p1-compare-table">
+            <thead>
+                <tr>
+                    <th></th>
+                    {% for m in models %}
+                    <th>
+                        <a href="{% url 'project1:model_detail' m.pk %}" class="p1-link p1-link--white">
+                            {{ m.name }}
+                        </a>
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in metric_rows %}
+                <tr>
+                    <th>{{ row.display }}</th>
+                    {% for cell in row.cells %}
+                        <td{% if cell.is_best %} class="p1-compare-best"{% endif %}>
+                            {{ cell.display_value }}
+                            {% if cell.is_best %} ★{% endif %}
+                        </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{{ chart_payload|json_script:"compare-payload" }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{% static 'project1/compare_chart.js' %}"></script>
+
+{% endif %}
+
+<div class="p1-action-row">
+    <a href="{% url 'project1:experiment_detail' experiment.pk %}">
+        <button type="button">Back to experiment</button>
+    </a>
+</div>
+
+{% endblock %}

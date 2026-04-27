@@ -396,3 +396,117 @@ def model_delete(request, pk):
         "model": model,
         "experiment": model.experiment,
     })
+
+
+def _best_index(values, direction):
+    """Return index of best value (higher or lower), or None if all None."""
+    valid = [(i, v) for i, v in enumerate(values) if v is not None]
+    if not valid:
+        return None
+    if direction == "higher":
+        return max(valid, key=lambda iv: iv[1])[0]
+    return min(valid, key=lambda iv: iv[1])[0]
+
+
+def experiment_compare(request, pk):
+    experiment = get_object_or_404(Experiment, pk=pk)
+    models = list(experiment.models.exclude(evaluation__isnull=True).order_by("created_at"))
+
+    problem_type = experiment.dataset.problem_type
+    if problem_type == "classification":
+        metric_specs = [
+            ("accuracy",  "Accuracy",            "higher"),
+            ("f1",        "F1 (weighted)",       "higher"),
+            ("precision", "Precision (weighted)", "higher"),
+            ("recall",    "Recall (weighted)",   "higher"),
+        ]
+    else:
+        metric_specs = [
+            ("r2",   "R²",   "higher"),
+            ("rmse", "RMSE", "lower"),
+            ("mae",  "MAE",  "lower"),
+        ]
+
+    metric_rows = []
+    chart_data_metrics = {}
+
+    if models:
+        # Context rows (algorithm + training metric)
+        metric_rows.append({
+            "display": "Algorithm",
+            "cells": [{"display_value": m.algorithm_display, "is_best": False} for m in models],
+        })
+        metric_rows.append({
+            "display": "Trained with",
+            "cells": [{"display_value": m.metric_display, "is_best": False} for m in models],
+        })
+
+        for key, display, direction in metric_specs:
+            train_values = [m.evaluation.get("train", {}).get(key) for m in models]
+            test_values  = [m.evaluation.get("test",  {}).get(key) for m in models]
+            best_train = _best_index(train_values, direction)
+            best_test  = _best_index(test_values,  direction)
+
+            metric_rows.append({
+                "display": f"Train {display}",
+                "cells": [
+                    {
+                        "display_value": "—" if v is None else f"{v:.4f}",
+                        "is_best": (i == best_train),
+                    }
+                    for i, v in enumerate(train_values)
+                ],
+            })
+            metric_rows.append({
+                "display": f"Test {display}",
+                "cells": [
+                    {
+                        "display_value": "—" if v is None else f"{v:.4f}",
+                        "is_best": (i == best_test),
+                    }
+                    for i, v in enumerate(test_values)
+                ],
+            })
+
+            chart_data_metrics[key] = {
+                "display": display,
+                "train": train_values,
+                "test": test_values,
+            }
+
+        # Training time (lower is better)
+        times = [m.train_duration_ms for m in models]
+        best_time = _best_index(times, "lower")
+        metric_rows.append({
+            "display": "Training time (ms)",
+            "cells": [
+                {
+                    "display_value": "—" if v is None else f"{v}",
+                    "is_best": (i == best_time),
+                }
+                for i, v in enumerate(times)
+            ],
+        })
+
+    # Selected metric for the bar chart (URL-persisted)
+    valid_keys = [k for k, _, _ in metric_specs]
+    selected_metric_key = request.GET.get("metric")
+    if selected_metric_key not in valid_keys:
+        selected_metric_key = valid_keys[0]
+
+    chart_payload = {
+        "labels": [m.name for m in models],
+        "metrics": chart_data_metrics,
+        "selected": selected_metric_key,
+    }
+
+    return render(request, "project1/experiment_compare.html", {
+        "experiment": experiment,
+        "dataset": experiment.dataset,
+        "models": models,
+        "metric_rows": metric_rows,
+        "metric_specs": metric_specs,
+        "selected_metric_key": selected_metric_key,
+        "chart_payload": chart_payload,
+        "problem_type": problem_type,
+    })
