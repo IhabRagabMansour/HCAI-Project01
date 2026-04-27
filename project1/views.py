@@ -352,7 +352,6 @@ def model_detail(request, pk):
     model = get_object_or_404(TrainedModel, pk=pk)
 
     metric_rows = []
-    cm_rows = []
     if model.evaluation:
         ev = model.evaluation
         if ev.get("problem_type") == "classification":
@@ -362,7 +361,6 @@ def model_detail(request, pk):
                 ("precision", "Precision (weighted)"),
                 ("recall",    "Recall (weighted)"),
             ]
-            cm_rows = list(zip(ev.get("labels", []), ev.get("confusion_matrix", [])))
         else:
             metric_specs = [
                 ("r2",   "R²"),
@@ -383,7 +381,6 @@ def model_detail(request, pk):
         "experiment": model.experiment,
         "dataset": model.experiment.dataset,
         "metric_rows": metric_rows,
-        "cm_rows": cm_rows,
     })
 
 

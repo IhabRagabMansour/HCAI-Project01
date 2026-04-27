@@ -62,34 +62,12 @@
     </table>
 </div>
 
-{% if cm_rows %}
+{% if model.evaluation.problem_type == "classification" %}
 <div class="p1-section">
     <h2 class="p1-section-title">Confusion matrix (test set)</h2>
-    <table class="p1-table p1-cm-table">
-        <thead>
-            <tr>
-                <th rowspan="2" class="p1-cm-corner">True ↓ / Predicted →</th>
-                <th colspan="{{ model.evaluation.labels|length }}">Predicted class</th>
-            </tr>
-            <tr>
-                {% for label in model.evaluation.labels %}
-                    <th>{{ label }}</th>
-                {% endfor %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for label, row in cm_rows %}
-            <tr>
-                <th>{{ label }}</th>
-                {% for cell in row %}
-                    <td class="p1-cm-cell{% if forloop.counter0 == forloop.parentloop.counter0 %} p1-cm-diag{% endif %}">
-                        {{ cell }}
-                    </td>
-                {% endfor %}
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="p1-chart-wrap">
+        <canvas id="cm-chart"></canvas>
+    </div>
 </div>
 
 <div class="p1-section">
@@ -119,11 +97,37 @@
 </div>
 {% endif %}
 
+{% if model.evaluation.problem_type == "regression" %}
 <div class="p1-section">
-    <div class="p1-msg p1-msg--info">
-        Plots (confusion matrix heatmap, predicted-vs-actual scatter, residuals, feature importance) will appear here in <strong>Stage 7c</strong>.
+    <h2 class="p1-section-title">Predicted vs Actual (test set)</h2>
+    <div class="p1-chart-wrap">
+        <canvas id="pva-chart"></canvas>
     </div>
 </div>
+
+<div class="p1-section">
+    <h2 class="p1-section-title">Residuals (test set)</h2>
+    <div class="p1-chart-wrap">
+        <canvas id="res-chart"></canvas>
+    </div>
+</div>
+{% endif %}
+
+<div class="p1-section">
+    <h2 class="p1-section-title">Feature importance</h2>
+    {% if model.evaluation.feature_importance %}
+    <div class="p1-chart-wrap">
+        <canvas id="fi-chart"></canvas>
+    </div>
+    {% else %}
+    <p class="p1-empty-msg"><em>Not available for this algorithm.</em></p>
+    {% endif %}
+</div>
+
+{{ model.evaluation|json_script:"model-evaluation" }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2/dist/chartjs-chart-matrix.min.js"></script>
+<script src="{% static 'project1/model_chart.js' %}"></script>
 
 {% else %}
 <div class="p1-section">

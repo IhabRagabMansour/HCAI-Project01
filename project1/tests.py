@@ -1291,3 +1291,96 @@ class PersistedEvaluationTest(TestCase):
         m.save()
         response = self.client.get(f"/project1/models/{m.pk}/")
         self.assertContains(response, "Re-train")
+
+
+# ── Stage 7c: Chart.js plots on model detail ───────────────────────────────
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ModelDetailPlotsTest(TestCase):
+    def _train(self, algorithm, metric, problem_type="classification"):
+        if problem_type == "classification":
+            rows = []
+            for i in range(15):
+                rows.append(f"{i*0.1},{i*0.2},0")
+            for i in range(15):
+                rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+            csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+            scaling = "standard"
+            stratify = "on"
+        else:
+            rows = "\n".join(f"{i*0.1},{i*0.2 + 1.0}" for i in range(40))
+            csv = f"x,y\n{rows}\n".encode()
+            scaling = "none"
+            stratify = ""
+
+        uploaded = SimpleUploadedFile("plots.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        from .models import Dataset, Experiment, TrainedModel
+        dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "ExpPlots",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": scaling,
+            "test_size": "0.2",
+            "random_seed": "42",
+            "stratify": stratify,
+        })
+        experiment = Experiment.objects.first()
+        self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+            "name": "PlotModel",
+            "algorithm": algorithm,
+            "metric": metric,
+        })
+        return TrainedModel.objects.first()
+
+    def test_classification_detail_has_confusion_matrix_canvas(self):
+        m = self._train("rf_clf", "f1", "classification")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, 'id="cm-chart"')
+
+    def test_classification_detail_does_not_have_regression_canvases(self):
+        m = self._train("rf_clf", "f1", "classification")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertNotContains(response, 'id="pva-chart"')
+        self.assertNotContains(response, 'id="res-chart"')
+
+    def test_regression_detail_has_pred_vs_actual_canvas(self):
+        m = self._train("linreg", "rmse", "regression")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, 'id="pva-chart"')
+
+    def test_regression_detail_has_residuals_canvas(self):
+        m = self._train("linreg", "rmse", "regression")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, 'id="res-chart"')
+
+    def test_regression_detail_does_not_have_confusion_matrix_canvas(self):
+        m = self._train("linreg", "rmse", "regression")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertNotContains(response, 'id="cm-chart"')
+
+    def test_feature_importance_canvas_for_random_forest(self):
+        m = self._train("rf_clf", "f1", "classification")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, 'id="fi-chart"')
+
+    def test_feature_importance_not_available_for_knn(self):
+        m = self._train("knn_clf", "accuracy", "classification")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "Not available")
+        self.assertNotContains(response, 'id="fi-chart"')
+
+    def test_chart_js_scripts_loaded(self):
+        m = self._train("rf_clf", "f1", "classification")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "chart.js")
+        self.assertContains(response, "chartjs-chart-matrix")
+        self.assertContains(response, "model_chart.js")
+
+    def test_evaluation_json_embedded(self):
+        m = self._train("rf_clf", "f1", "classification")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, 'id="model-evaluation"')
+        # The matrix data should be in the JSON
+        self.assertContains(response, "confusion_matrix")
