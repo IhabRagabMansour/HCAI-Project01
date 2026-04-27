@@ -537,6 +537,49 @@ class ExperimentCreateViewTest(TestCase):
         exp = Experiment.objects.first()
         self.assertRedirects(response, f"/project1/experiments/{exp.pk}/")
 
+    def test_form_get_renders_column_checkboxes(self):
+        response = self.client.get(f"/project1/datasets/{self.dataset.pk}/experiments/new/")
+        # Each non-target column should appear as a checkbox option
+        self.assertContains(response, 'name="excluded_columns"')
+        self.assertContains(response, 'value="a"')
+        self.assertContains(response, 'value="b"')
+        # Target column should NOT appear as an excludable option
+        self.assertNotContains(response, 'value="target"')
+
+    def test_post_with_excluded_columns(self):
+        self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "Excluded Test",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+            "excluded_columns": ["a"],
+        })
+        from .models import Experiment
+        exp = Experiment.objects.first()
+        self.assertEqual(exp.excluded_columns, ["a"])
+        # n_features_before should reflect the exclusion
+        self.assertEqual(exp.n_features_before, 1)
+        self.assertNotIn("a", exp.feature_names)
+        self.assertIn("b", exp.feature_names)
+
+    def test_post_target_column_cannot_be_excluded(self):
+        # Even if a malicious POST tries to exclude the target, the view
+        # must reject it (target stays in the dataset).
+        self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "Sneaky",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+            "excluded_columns": ["target"],
+        })
+        from .models import Experiment
+        exp = Experiment.objects.first()
+        self.assertNotIn("target", exp.excluded_columns)
+
     def test_invalid_test_size_rejected(self):
         response = self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
             "name": "Bad",
@@ -1673,6 +1716,30 @@ class BuildFullPipelineTest(TestCase):
         df_pred  = pd.DataFrame({"x1": [5.0],                 "cat": ["c"]})  # unseen
         pipe.fit(df_train, np.array([0, 1, 0, 1]))
         pipe.predict(df_pred)  # must not raise
+
+    def test_excluded_columns_dropped_in_pipeline(self):
+        # Verify that ExperimentConfig.excluded_columns flows through prepare_experiment
+        df = pd.DataFrame({
+            "x1": list(range(20)),
+            "x2": [i * 2 for i in range(20)],
+            "noise_id": list(range(100, 120)),
+            "target": [0, 1] * 10,
+        })
+        config = ExperimentConfig(stratify=False, excluded_columns=["noise_id"])
+        result = prepare_experiment(df, "target", "classification", config)
+        self.assertNotIn("noise_id", result.feature_names)
+        self.assertIn("x1", result.feature_names)
+        self.assertIn("x2", result.feature_names)
+        self.assertEqual(result.n_features_before, 2)
+
+    def test_excluding_all_features_raises(self):
+        df = pd.DataFrame({
+            "x1": list(range(10)),
+            "target": [0, 1] * 5,
+        })
+        config = ExperimentConfig(stratify=False, excluded_columns=["x1"])
+        with self.assertRaises(ValueError):
+            prepare_experiment(df, "target", "classification", config)
 
     def test_serialization_roundtrip_preserves_predictions(self):
         # joblib-pickle the whole pipeline, reload, predictions must be identical.

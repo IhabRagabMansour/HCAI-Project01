@@ -52,6 +52,16 @@
             <th>Features (after encoding)</th>
             <td>{{ experiment.n_features_after }}</td>
         </tr>
+        {% if experiment.excluded_columns %}
+        <tr>
+            <th>Excluded columns ({{ experiment.excluded_columns|length }})</th>
+            <td>
+                {% for col in experiment.excluded_columns %}
+                    <code>{{ col }}</code>{% if not forloop.last %}, {% endif %}
+                {% endfor %}
+            </td>
+        </tr>
+        {% endif %}
     </table>
 </div>
 

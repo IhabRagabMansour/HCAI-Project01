@@ -18,6 +18,11 @@ class ExperimentConfig:
     test_size: float = 0.2
     random_seed: int = 42
     stratify: bool = True
+    excluded_columns: list = None          # column names to drop before preprocessing
+
+    def __post_init__(self):
+        if self.excluded_columns is None:
+            self.excluded_columns = []
 
 
 # ── Result dataclass ────────────────────────────────────────────────────────
@@ -166,7 +171,16 @@ def prepare_experiment(
 
     X = df.drop(columns=[target_name]).copy()
     y = df[target_name].copy()
+
+    # 0 — Drop user-excluded columns before everything else
+    if config.excluded_columns:
+        cols_to_drop = [c for c in config.excluded_columns if c in X.columns]
+        if cols_to_drop:
+            X = X.drop(columns=cols_to_drop)
+
     n_features_before = X.shape[1]
+    if n_features_before == 0:
+        raise ValueError("No feature columns remain after exclusion.")
 
     # 1 — "drop" missing strategy is applied upstream of the pipeline because
     #     SimpleImputer can't drop rows. Other strategies happen inside the

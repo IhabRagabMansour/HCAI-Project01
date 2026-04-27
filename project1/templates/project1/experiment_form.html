@@ -40,6 +40,24 @@
             </p>
         </div>
 
+        {% if dataset.columns %}
+        <div class="p1-form-group">
+            <label class="p1-label">Exclude columns <span class="p1-optional">(optional)</span></label>
+            <div class="p1-column-grid">
+                {% for col in dataset.columns %}
+                {% if col.name != dataset.target_name %}
+                <label class="p1-column-checkbox">
+                    <input type="checkbox" name="excluded_columns" value="{{ col.name }}">
+                    <code>{{ col.name }}</code>
+                    <span class="p1-column-dtype">{{ col.dtype }}</span>
+                </label>
+                {% endif %}
+                {% endfor %}
+            </div>
+            <p class="p1-hint">Check any column to drop it from training. Useful for IDs, timestamps, or columns you suspect leak the target. The target column (<code>{{ dataset.target_name }}</code>) is always kept.</p>
+        </div>
+        {% endif %}
+
         <div class="p1-form-group">
             <label class="p1-label" for="{{ form.categorical_encoding.id_for_label }}">Categorical encoding</label>
             {{ form.categorical_encoding }}

@@ -413,6 +413,47 @@
     text-decoration: underline;
 }
 
+/* ── Column-checkbox grid (feature exclusion) ── */
+.p1-column-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 6px 16px;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #fafbfd;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.p1-column-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.p1-column-checkbox:hover {
+    background: #eef2f8;
+}
+
+.p1-column-checkbox input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.p1-column-dtype {
+    color: #888;
+    font-size: 12px;
+    margin-left: auto;
+    font-style: italic;
+}
+
 /* ── Empty state message ── */
 .p1-empty-msg {
     text-align: center;

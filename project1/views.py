@@ -220,6 +220,13 @@ def experiment_create(request, dataset_pk):
             if not experiment.name:
                 count = dataset.experiments.count()
                 experiment.name = f"Experiment {count + 1}"
+
+            # Capture excluded-column checkboxes (target is never excludable)
+            valid_cols = {c["name"] for c in (dataset.columns or [])}
+            valid_cols.discard(dataset.target_name)
+            excluded = [c for c in request.POST.getlist("excluded_columns") if c in valid_cols]
+            experiment.excluded_columns = excluded
+
             experiment.save()
 
             try:

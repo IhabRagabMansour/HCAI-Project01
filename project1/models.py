@@ -98,6 +98,7 @@ class Experiment(models.Model):
     test_size = models.FloatField(default=0.2)
     random_seed = models.PositiveIntegerField(default=42)
     stratify = models.BooleanField(default=True)
+    excluded_columns = models.JSONField(default=list, blank=True)
 
     # Results (populated by prepare_experiment)
     n_train = models.PositiveIntegerField(null=True, blank=True)
@@ -140,6 +141,7 @@ class Experiment(models.Model):
             test_size=self.test_size,
             random_seed=self.random_seed,
             stratify=self.stratify,
+            excluded_columns=list(self.excluded_columns or []),
         )
 
 
