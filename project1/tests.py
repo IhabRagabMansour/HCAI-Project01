@@ -895,3 +895,67 @@ class TrainedModelRegressionFlowTest(TestCase):
         self.assertContains(response, "RMSE")
         self.assertNotContains(response, "Logistic Regression")
         self.assertNotContains(response, "Accuracy")
+
+
+# ── Stage 6c: model delete + cleanup signal ────────────────────────────────
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class TrainedModelDeleteTest(TestCase):
+    def setUp(self):
+        rows = []
+        for i in range(10):
+            rows.append(f"{i*0.1},{i*0.2},0")
+        for i in range(10):
+            rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("clf2.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        self.dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "ExpDel",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        from .models import Experiment
+        self.experiment = Experiment.objects.first()
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "ToDelete",
+            "algorithm": "logreg",
+            "metric": "accuracy",
+        })
+        from .models import TrainedModel
+        self.model = TrainedModel.objects.first()
+
+    def test_delete_confirm_page_returns_200(self):
+        response = self.client.get(f"/project1/models/{self.model.pk}/delete/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "ToDelete")
+
+    def test_delete_post_removes_model(self):
+        from .models import TrainedModel
+        self.client.post(f"/project1/models/{self.model.pk}/delete/")
+        self.assertEqual(TrainedModel.objects.count(), 0)
+
+    def test_delete_post_redirects_to_experiment(self):
+        response = self.client.post(f"/project1/models/{self.model.pk}/delete/")
+        self.assertRedirects(response, f"/project1/experiments/{self.experiment.pk}/")
+
+    def test_delete_removes_file_from_disk(self):
+        file_path = self.model.model_file.path
+        self.assertTrue(os.path.isfile(file_path))
+        self.model.delete()
+        self.assertFalse(os.path.isfile(file_path))
+
+    def test_model_detail_shows_delete_button(self):
+        response = self.client.get(f"/project1/models/{self.model.pk}/")
+        self.assertContains(response, "Delete")
+
+    def test_deleting_experiment_cascades_to_models(self):
+        from .models import TrainedModel
+        file_path = self.model.model_file.path
+        self.experiment.delete()
+        self.assertEqual(TrainedModel.objects.count(), 0)
+        self.assertFalse(os.path.isfile(file_path))

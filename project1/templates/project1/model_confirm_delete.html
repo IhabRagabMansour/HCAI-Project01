@@ -1,0 +1,23 @@
+{% extends 'project1/base.html' %}
+{% load static %}
+
+{% block page_title %}Delete {{ model.name }}{% endblock %}
+
+{% block project1_content %}
+<div class="p1-section p1-confirm-delete">
+    <p>Are you sure you want to delete <strong>{{ model.name }}</strong>?</p>
+    <p style="color:#777; font-size:14px;">
+        This will remove the trained model and its saved <code>.joblib</code> file from disk. This cannot be undone.
+    </p>
+</div>
+
+<div class="p1-action-row">
+    <a href="{% url 'project1:model_detail' model.pk %}">
+        <button type="button">Cancel</button>
+    </a>
+    <form method="post" style="display:inline;">
+        {% csrf_token %}
+        <button type="submit" class="btn-danger">Yes, delete</button>
+    </form>
+</div>
+{% endblock %}

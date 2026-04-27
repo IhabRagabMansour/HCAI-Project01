@@ -330,3 +330,17 @@ def model_detail(request, pk):
         "experiment": model.experiment,
         "dataset": model.experiment.dataset,
     })
+
+
+def model_delete(request, pk):
+    model = get_object_or_404(TrainedModel, pk=pk)
+    if request.method == "POST":
+        name = model.name
+        experiment_pk = model.experiment_id
+        model.delete()
+        messages.success(request, f"'{name}' deleted.")
+        return redirect("project1:experiment_detail", pk=experiment_pk)
+    return render(request, "project1/model_confirm_delete.html", {
+        "model": model,
+        "experiment": model.experiment,
+    })
