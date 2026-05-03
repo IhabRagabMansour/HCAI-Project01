@@ -807,6 +807,121 @@ class TrainAndScoreTest(TestCase):
         self.assertGreaterEqual(result.train_duration_ms, 0)
 
 
+# ── Stage 11a: hyperparameter spec + build_estimator integration ───────────
+
+class HyperparameterSpecTest(TestCase):
+    def test_every_algorithm_has_a_spec_entry(self):
+        from .services.train import HYPERPARAM_SPECS, CLASSIFICATION_ALGOS, REGRESSION_ALGOS
+        for algo in CLASSIFICATION_ALGOS + REGRESSION_ALGOS:
+            self.assertIn(algo, HYPERPARAM_SPECS, msg=f"{algo} missing spec")
+
+    def test_specs_have_required_fields(self):
+        from .services.train import HYPERPARAM_SPECS
+        for algo, specs in HYPERPARAM_SPECS.items():
+            for spec in specs:
+                self.assertIn("key", spec)
+                self.assertIn("label", spec)
+                self.assertIn("type", spec)
+                self.assertIn("default", spec)
+                self.assertIn(spec["type"], ("int", "float", "choice", "bool"))
+
+
+class ResolveHyperparametersTest(TestCase):
+    def test_filters_unknown_keys(self):
+        from .services.train import _resolve_hyperparameters
+        result = _resolve_hyperparameters("logreg", {"C": 0.5, "bogus": 99})
+        self.assertIn("C", result)
+        self.assertNotIn("bogus", result)
+
+    def test_max_depth_zero_becomes_none(self):
+        from .services.train import _resolve_hyperparameters
+        result = _resolve_hyperparameters("rf_clf", {"max_depth": 0})
+        self.assertIsNone(result["max_depth"])
+
+    def test_max_depth_positive_passes_through(self):
+        from .services.train import _resolve_hyperparameters
+        result = _resolve_hyperparameters("rf_clf", {"max_depth": 10})
+        self.assertEqual(result["max_depth"], 10)
+
+    def test_penalty_none_becomes_none(self):
+        from .services.train import _resolve_hyperparameters
+        result = _resolve_hyperparameters("logreg", {"penalty": "none"})
+        self.assertIsNone(result["penalty"])
+
+    def test_max_features_none_becomes_none(self):
+        from .services.train import _resolve_hyperparameters
+        result = _resolve_hyperparameters("rf_clf", {"max_features": "none"})
+        self.assertIsNone(result["max_features"])
+
+    def test_p_cast_to_int(self):
+        from .services.train import _resolve_hyperparameters
+        result = _resolve_hyperparameters("knn_clf", {"p": "1"})
+        self.assertEqual(result["p"], 1)
+        self.assertIsInstance(result["p"], int)
+
+    def test_empty_input(self):
+        from .services.train import _resolve_hyperparameters
+        self.assertEqual(_resolve_hyperparameters("logreg", {}), {})
+        self.assertEqual(_resolve_hyperparameters("logreg", None), {})
+
+
+class BuildEstimatorWithHyperparametersTest(TestCase):
+    def test_rf_n_estimators_applied(self):
+        est = build_estimator("rf_clf", 42, hyperparameters={"n_estimators": 200})
+        self.assertEqual(est.n_estimators, 200)
+
+    def test_logreg_C_applied(self):
+        est = build_estimator("logreg", 42, hyperparameters={"C": 0.5})
+        self.assertEqual(est.C, 0.5)
+
+    def test_svm_kernel_applied(self):
+        est = build_estimator("svm", 42, hyperparameters={"kernel": "linear"})
+        self.assertEqual(est.kernel, "linear")
+
+    def test_logreg_penalty_none_translated(self):
+        est = build_estimator("logreg", 42, hyperparameters={"penalty": "none"})
+        self.assertIsNone(est.penalty)
+
+    def test_rf_max_depth_zero_translated(self):
+        est = build_estimator("rf_clf", 42, hyperparameters={"max_depth": 0})
+        self.assertIsNone(est.max_depth)
+
+    def test_knn_n_neighbors_applied(self):
+        est = build_estimator("knn_clf", 42, hyperparameters={"n_neighbors": 7})
+        self.assertEqual(est.n_neighbors, 7)
+
+    def test_dt_criterion_applied(self):
+        est = build_estimator("dt_clf", 42, hyperparameters={"criterion": "entropy"})
+        self.assertEqual(est.criterion, "entropy")
+
+    def test_no_hyperparameters_uses_defaults(self):
+        # Same as before: RF default n_estimators=100
+        est = build_estimator("rf_clf", 42)
+        self.assertEqual(est.n_estimators, 100)
+
+    def test_unknown_keys_silently_dropped(self):
+        # Should not raise — _resolve_hyperparameters filters them
+        est = build_estimator("rf_clf", 42, hyperparameters={"bogus_param": "x", "n_estimators": 50})
+        self.assertEqual(est.n_estimators, 50)
+
+
+class TrainAndScoreWithHyperparametersTest(TestCase):
+    def test_pipeline_estimator_has_configured_hyperparameters(self):
+        np.random.seed(0)
+        df = pd.DataFrame({
+            "x1": np.concatenate([np.random.randn(50), np.random.randn(50) + 5]),
+            "x2": np.concatenate([np.random.randn(50), np.random.randn(50) + 5]),
+            "target": [0] * 50 + [1] * 50,
+        })
+        prepared = prepare_experiment(df, "target", "classification",
+                                      ExperimentConfig(stratify=False))
+        result = train_and_score(prepared, "rf_clf", "accuracy",
+                                 random_seed=42, hyperparameters={"n_estimators": 25})
+        # Pull the estimator out of the fitted pipeline and verify
+        est = result.pipeline.named_steps["estimator"]
+        self.assertEqual(est.n_estimators, 25)
+
+
 # ── Stage 6b: TrainedModel + train form + detail view integration ──────────
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
