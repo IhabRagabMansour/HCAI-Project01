@@ -413,6 +413,39 @@
     text-decoration: underline;
 }
 
+/* ── Hyperparameter form rows ── */
+.p1-hp-section {
+    padding: 12px 14px;
+    background: #fafbfd;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.p1-hp-row {
+    margin-bottom: 16px;
+}
+
+.p1-hp-row:last-child {
+    margin-bottom: 0;
+}
+
+.p1-hp-row input[type="number"],
+.p1-hp-row select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    box-sizing: border-box;
+}
+
+.p1-hp-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
 /* ── Column-checkbox grid (feature exclusion) ── */
 .p1-column-grid {
     display: grid;

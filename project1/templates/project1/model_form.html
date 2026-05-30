@@ -72,6 +72,52 @@
         </div>
     </div>
 
+    <div class="p1-section">
+        <h2 class="p1-section-title">Hyperparameters</h2>
+        <p class="p1-hint" style="text-align:center;">Defaults are pre-filled. Leave fields untouched to use sklearn's defaults.</p>
+
+        {% if hp_errors %}
+        <ul class="p1-field-errors" style="margin: 0 0 12px;">
+            {% for e in hp_errors %}<li>{{ e }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+
+        {% for section in hp_sections %}
+        <div class="p1-hp-section" data-algorithm="{{ section.algorithm }}" style="display:none;">
+            {% for spec in section.specs %}
+                {% with field_name="hp__"|add:section.algorithm|add:"__"|add:spec.key %}
+                <div class="p1-form-group p1-hp-row">
+                    <label class="p1-label" for="id_{{ field_name }}">{{ spec.label }}</label>
+
+                    {% if spec.type == "bool" %}
+                        <input type="checkbox"
+                               id="id_{{ field_name }}"
+                               name="{{ field_name }}"
+                               {% if spec.default %}checked{% endif %}>
+                    {% elif spec.type == "choice" %}
+                        <select id="id_{{ field_name }}" name="{{ field_name }}">
+                            {% for ckey, clabel in spec.choices %}
+                                <option value="{{ ckey }}"{% if ckey == spec.default %} selected{% endif %}>{{ clabel }}</option>
+                            {% endfor %}
+                        </select>
+                    {% else %}
+                        <input type="number"
+                               id="id_{{ field_name }}"
+                               name="{{ field_name }}"
+                               value="{{ spec.default }}"
+                               min="{{ spec.min }}"
+                               max="{{ spec.max }}"
+                               step="{{ spec.step }}">
+                    {% endif %}
+
+                    {% if spec.hint %}<p class="p1-hint" style="margin-top:4px;">{{ spec.hint }}</p>{% endif %}
+                </div>
+                {% endwith %}
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+
     <div class="p1-action-row">
         <a href="{% url 'project1:experiment_detail' experiment.pk %}">
             <button type="button">Cancel</button>
@@ -79,5 +125,7 @@
         <button type="submit">Train</button>
     </div>
 </form>
+
+<script src="{% static 'project1/hp_toggle.js' %}"></script>
 
 {% endblock %}

@@ -1033,6 +1033,129 @@ class TrainedModelCreateViewTest(TestCase):
         response = self.client.get(f"/project1/experiments/{self.experiment.pk}/")
         self.assertContains(response, "Train new model")
 
+    # ── Stage 11b: hyperparameter form integration ─────────────────────────
+
+    def test_form_renders_hp_sections_for_every_classification_algorithm(self):
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/models/new/")
+        for algo in ("logreg", "rf_clf", "svm", "knn_clf", "dt_clf"):
+            self.assertContains(response, f'data-algorithm="{algo}"')
+
+    def test_form_renders_hp_field_names(self):
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/models/new/")
+        # A couple of representative field names
+        self.assertContains(response, 'name="hp__rf_clf__n_estimators"')
+        self.assertContains(response, 'name="hp__logreg__C"')
+        self.assertContains(response, 'name="hp__svm__kernel"')
+
+    def test_form_renders_defaults(self):
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/models/new/")
+        # Default values appear in value attributes / selected options
+        self.assertContains(response, 'value="100"')   # rf n_estimators
+        self.assertContains(response, 'value="1.0"')   # logreg/svm C
+        self.assertContains(response, 'value="5"')     # knn n_neighbors
+
+    def test_post_with_custom_hyperparameters_stored(self):
+        from .models import TrainedModel
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "Tuned RF",
+            "algorithm": "rf_clf",
+            "metric": "accuracy",
+            "hp__rf_clf__n_estimators": "250",
+            "hp__rf_clf__max_depth": "10",
+        })
+        m = TrainedModel.objects.first()
+        self.assertEqual(m.hyperparameters.get("n_estimators"), 250)
+        self.assertEqual(m.hyperparameters.get("max_depth"), 10)
+
+    def test_post_defaults_not_stored_in_hyperparameters(self):
+        from .models import TrainedModel
+        # Submit ONLY the default values; expect empty dict afterwards
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "Default RF",
+            "algorithm": "rf_clf",
+            "metric": "accuracy",
+            "hp__rf_clf__n_estimators": "100",       # default
+            "hp__rf_clf__max_depth": "0",             # default (= sklearn None)
+            "hp__rf_clf__min_samples_split": "2",     # default
+            "hp__rf_clf__min_samples_leaf": "1",      # default
+            "hp__rf_clf__max_features": "sqrt",       # default
+            "hp__rf_clf__criterion": "gini",          # default
+            "hp__rf_clf__bootstrap": "on",            # default True
+        })
+        m = TrainedModel.objects.first()
+        self.assertEqual(m.hyperparameters, {})
+
+    def test_post_out_of_range_int_rejected(self):
+        from .models import TrainedModel
+        response = self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "Bad RF",
+            "algorithm": "rf_clf",
+            "metric": "accuracy",
+            "hp__rf_clf__n_estimators": "9999",  # max is 500
+        })
+        self.assertEqual(TrainedModel.objects.count(), 0)
+        self.assertContains(response, "between")
+
+    def test_post_invalid_choice_rejected(self):
+        from .models import TrainedModel
+        response = self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "Bad SVM",
+            "algorithm": "svm",
+            "metric": "accuracy",
+            "hp__svm__kernel": "wormhole",
+        })
+        self.assertEqual(TrainedModel.objects.count(), 0)
+        self.assertContains(response, "invalid choice")
+
+    def test_post_non_numeric_int_rejected(self):
+        from .models import TrainedModel
+        response = self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "NaN",
+            "algorithm": "knn_clf",
+            "metric": "accuracy",
+            "hp__knn_clf__n_neighbors": "abc",
+        })
+        self.assertEqual(TrainedModel.objects.count(), 0)
+        self.assertContains(response, "must be an integer")
+
+    def test_model_detail_shows_custom_hyperparameters(self):
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "Show HP",
+            "algorithm": "rf_clf",
+            "metric": "accuracy",
+            "hp__rf_clf__n_estimators": "75",
+        })
+        from .models import TrainedModel
+        m = TrainedModel.objects.first()
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "n_estimators=75")
+
+    def test_model_detail_shows_defaults_marker_when_no_overrides(self):
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "NoCustom",
+            "algorithm": "logreg",
+            "metric": "accuracy",
+        })
+        from .models import TrainedModel
+        m = TrainedModel.objects.first()
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "sklearn defaults")
+
+    def test_hyperparameters_actually_reach_estimator(self):
+        import joblib, io
+        from .models import TrainedModel
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "Verify",
+            "algorithm": "rf_clf",
+            "metric": "accuracy",
+            "hp__rf_clf__n_estimators": "31",
+        })
+        m = TrainedModel.objects.first()
+        with m.model_file.open("rb") as f:
+            pipeline = joblib.load(f)
+        est = pipeline.named_steps["estimator"]
+        self.assertEqual(est.n_estimators, 31)
+
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 class TrainedModelRegressionFlowTest(TestCase):

@@ -12,7 +12,7 @@ from .services.data import (
     build_chart_data, build_histogram_data, build_boxplot_data, build_heatmap_data,
 )
 from .services.preprocess import prepare_experiment
-from .services.train import train_and_score
+from .services.train import train_and_score, HYPERPARAM_SPECS
 from .services.evaluate import build_evaluation
 
 ROWS_PER_PAGE = 25
@@ -277,6 +277,75 @@ def experiment_delete(request, pk):
     return render(request, "project1/experiment_confirm_delete.html", {"experiment": experiment})
 
 
+def _parse_hyperparameters(post, algorithm: str):
+    """Extract HP values for the given algorithm from POST, validate against
+    the spec, and return (hp_dict, error_list). Only values that differ from
+    the spec's default are kept in hp_dict."""
+    specs = HYPERPARAM_SPECS.get(algorithm, [])
+
+    # If no hp fields for this algorithm are in POST at all, the form section
+    # was never rendered/submitted — fall back to defaults entirely rather
+    # than misinterpreting absent checkboxes as False.
+    prefix = f"hp__{algorithm}__"
+    if not any(k.startswith(prefix) for k in post.keys()):
+        return {}, []
+
+    hp: dict = {}
+    errors: list = []
+
+    for spec in specs:
+        field_name = f"hp__{algorithm}__{spec['key']}"
+
+        if spec["type"] == "bool":
+            # Checkboxes: present in POST → True; absent → False
+            value = field_name in post
+            if value != spec["default"]:
+                hp[spec["key"]] = value
+            continue
+
+        raw = (post.get(field_name) or "").strip()
+        if not raw:
+            continue  # leave at sklearn default
+
+        if spec["type"] == "int":
+            try:
+                v = int(raw)
+            except ValueError:
+                errors.append(f"{spec['label']}: must be an integer.")
+                continue
+            if v < spec["min"] or v > spec["max"]:
+                errors.append(
+                    f"{spec['label']}: must be between {spec['min']} and {spec['max']}."
+                )
+                continue
+            if v != spec["default"]:
+                hp[spec["key"]] = v
+
+        elif spec["type"] == "float":
+            try:
+                v = float(raw)
+            except ValueError:
+                errors.append(f"{spec['label']}: must be a number.")
+                continue
+            if v < spec["min"] or v > spec["max"]:
+                errors.append(
+                    f"{spec['label']}: must be between {spec['min']} and {spec['max']}."
+                )
+                continue
+            if v != spec["default"]:
+                hp[spec["key"]] = v
+
+        elif spec["type"] == "choice":
+            valid = {c[0] for c in spec["choices"]}
+            if raw not in valid:
+                errors.append(f"{spec['label']}: invalid choice.")
+                continue
+            if raw != spec["default"]:
+                hp[spec["key"]] = raw
+
+    return hp, errors
+
+
 def model_create(request, experiment_pk):
     from django.core.files.base import ContentFile
     experiment = get_object_or_404(Experiment, pk=experiment_pk)
@@ -290,14 +359,19 @@ def model_create(request, experiment_pk):
         messages.error(request, "Cannot train: dataset's problem type is unknown.")
         return redirect("project1:experiment_detail", pk=experiment_pk)
 
+    hp_errors: list = []
     if request.method == "POST":
         form = TrainedModelForm(request.POST, problem_type=problem_type)
-        if form.is_valid():
+        # Parse + validate hyperparameters for the chosen algorithm
+        algo_for_hp = request.POST.get("algorithm", "")
+        hp_dict, hp_errors = _parse_hyperparameters(request.POST, algo_for_hp)
+        if form.is_valid() and not hp_errors:
             model = form.save(commit=False)
             model.experiment = experiment
             if not model.name:
                 count = experiment.models.count()
                 model.name = f"{model.algorithm_display} #{count + 1}"
+            model.hyperparameters = hp_dict
             model.save()
 
             pipeline = None
@@ -313,6 +387,7 @@ def model_create(request, experiment_pk):
                 result = train_and_score(
                     prepared, model.algorithm, model.metric,
                     random_seed=experiment.random_seed,
+                    hyperparameters=hp_dict,
                 )
                 pipeline = result.pipeline
                 model.model_file.save(
@@ -351,10 +426,23 @@ def model_create(request, experiment_pk):
             initial = {"algorithm": "linreg", "metric": "r2"}
         form = TrainedModelForm(initial=initial, problem_type=problem_type)
 
+    # Filter HYPERPARAM_SPECS to only the algorithms valid for this problem type
+    if problem_type == "classification":
+        valid_algos = ("logreg", "rf_clf", "svm", "knn_clf", "dt_clf")
+    else:
+        valid_algos = ("linreg", "rf_reg", "svr", "knn_reg", "dt_reg")
+    hp_sections = [
+        {"algorithm": a, "specs": HYPERPARAM_SPECS.get(a, [])}
+        for a in valid_algos
+    ]
+
     return render(request, "project1/model_form.html", {
         "form": form,
         "experiment": experiment,
         "dataset": experiment.dataset,
+        "hp_sections": hp_sections,
+        "hp_errors": hp_errors,
+        "posted": request.POST if request.method == "POST" else None,
     })
 
 

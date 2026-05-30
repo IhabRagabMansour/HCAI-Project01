@@ -20,6 +20,18 @@
     <table class="p1-detail-table">
         <tr><th>Algorithm</th><td>{{ model.algorithm_display }}</td></tr>
         <tr><th>Trained with metric</th><td>{{ model.metric_display }}</td></tr>
+        <tr>
+            <th>Hyperparameters</th>
+            <td>
+                {% if model.hyperparameters %}
+                    {% for key, value in model.hyperparameters.items %}
+                        <code>{{ key }}={{ value }}</code>{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                {% else %}
+                    <em style="color:#888;">sklearn defaults</em>
+                {% endif %}
+            </td>
+        </tr>
         <tr><th>Training time</th><td>{{ model.train_duration_ms }} ms</td></tr>
         {% if model.model_file_size_kb %}
         <tr><th>Model file</th><td>{{ model.model_file_size_kb }} KB</td></tr>

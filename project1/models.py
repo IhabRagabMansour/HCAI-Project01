@@ -193,6 +193,8 @@ class TrainedModel(models.Model):
     evaluation = models.JSONField(null=True, blank=True)
     eval_error = models.TextField(null=True, blank=True)
 
+    hyperparameters = models.JSONField(default=dict, blank=True)
+
     class Meta:
         ordering = ["-created_at"]
 
