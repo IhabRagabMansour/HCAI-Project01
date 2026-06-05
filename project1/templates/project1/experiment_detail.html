@@ -117,6 +117,12 @@
             <th>Stratify</th>
             <td>{{ experiment.stratify|yesno:"Yes,No" }}</td>
         </tr>
+        {% if experiment.oversampling and experiment.oversampling != "none" %}
+        <tr>
+            <th>Oversampling</th>
+            <td>{{ experiment.get_oversampling_display }}</td>
+        </tr>
+        {% endif %}
         <tr>
             <th>Created</th>
             <td>{{ experiment.created_at|date:"Y-m-d H:i" }}</td>

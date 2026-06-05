@@ -40,6 +40,10 @@ REGRESSION_METRICS     = ("r2", "rmse", "mae")
 
 HYPERPARAM_SPECS: dict[str, list[dict]] = {
     "logreg": [
+        {"key": "class_weight", "label": "Class weight", "type": "choice",
+         "default": "none",
+         "choices": [["none", "None"], ["balanced", "Balanced (auto by frequency)"]],
+         "hint": "Use 'balanced' for imbalanced classes — adjusts weights inversely proportional to frequencies."},
         {"key": "C", "label": "Regularization (C)", "type": "float",
          "default": 1.0, "min": 0.001, "max": 1000.0, "step": 0.1,
          "hint": "Inverse of regularization strength. Smaller = stronger regularization."},
@@ -61,6 +65,10 @@ HYPERPARAM_SPECS: dict[str, list[dict]] = {
          "hint": "Convergence cap for the solver."},
     ],
     "rf_clf": [
+        {"key": "class_weight", "label": "Class weight", "type": "choice",
+         "default": "none",
+         "choices": [["none", "None"], ["balanced", "Balanced (auto by frequency)"]],
+         "hint": "Use 'balanced' for imbalanced classes."},
         {"key": "n_estimators", "label": "Number of trees", "type": "int",
          "default": 100, "min": 10, "max": 500, "step": 10,
          "hint": "More trees = more accurate but slower."},
@@ -86,6 +94,10 @@ HYPERPARAM_SPECS: dict[str, list[dict]] = {
          "hint": "Use bootstrap samples when building trees."},
     ],
     "svm": [
+        {"key": "class_weight", "label": "Class weight", "type": "choice",
+         "default": "none",
+         "choices": [["none", "None"], ["balanced", "Balanced (auto by frequency)"]],
+         "hint": "Use 'balanced' for imbalanced classes."},
         {"key": "C", "label": "Regularization (C)", "type": "float",
          "default": 1.0, "min": 0.001, "max": 1000.0, "step": 0.1,
          "hint": "Larger C = less regularization."},
@@ -124,6 +136,10 @@ HYPERPARAM_SPECS: dict[str, list[dict]] = {
          "hint": "Power parameter for the Minkowski metric."},
     ],
     "dt_clf": [
+        {"key": "class_weight", "label": "Class weight", "type": "choice",
+         "default": "none",
+         "choices": [["none", "None"], ["balanced", "Balanced (auto by frequency)"]],
+         "hint": "Use 'balanced' for imbalanced classes."},
         {"key": "max_depth", "label": "Max tree depth (0 = unlimited)", "type": "int",
          "default": 0, "min": 0, "max": 50, "step": 1,
          "hint": "Limit depth to control overfitting."},
@@ -258,6 +274,9 @@ def _resolve_hyperparameters(algorithm: str, raw: dict) -> dict:
         if key == "penalty" and val == "none":
             out[key] = None
             continue
+        if key == "class_weight" and val == "none":
+            out[key] = None
+            continue
         if key == "p":
             try:
                 out[key] = int(val)
@@ -343,10 +362,12 @@ def train_and_score(
     raw X_train, score on train + test using the chosen metric, return the
     fitted pipeline (both in-memory and joblib-serialized).
     """
-    from .pipeline import build_full_pipeline
+    from .pipeline import build_full_pipeline, build_sampler
 
     estimator = build_estimator(algorithm, random_seed, hyperparameters=hyperparameters)
-    pipeline = build_full_pipeline(prepared.preprocessing, estimator)
+    oversampling = getattr(prepared, "oversampling", "none") or "none"
+    sampler = build_sampler(oversampling, random_seed)
+    pipeline = build_full_pipeline(prepared.preprocessing, estimator, sampler=sampler)
 
     t0 = time.perf_counter()
     pipeline.fit(prepared.X_train, prepared.y_train)

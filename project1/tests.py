@@ -1184,6 +1184,207 @@ class TrainedModelRegressionFlowTest(TestCase):
         self.assertNotContains(response, "Accuracy")
 
 
+# ── Stage 10a: class_weight hyperparameter ─────────────────────────────────
+
+class ClassWeightHyperparameterTest(TestCase):
+    def test_class_weight_spec_for_logreg(self):
+        from .services.train import HYPERPARAM_SPECS
+        keys = [s["key"] for s in HYPERPARAM_SPECS["logreg"]]
+        self.assertIn("class_weight", keys)
+
+    def test_class_weight_spec_for_rf_clf(self):
+        from .services.train import HYPERPARAM_SPECS
+        keys = [s["key"] for s in HYPERPARAM_SPECS["rf_clf"]]
+        self.assertIn("class_weight", keys)
+
+    def test_class_weight_spec_for_svm(self):
+        from .services.train import HYPERPARAM_SPECS
+        keys = [s["key"] for s in HYPERPARAM_SPECS["svm"]]
+        self.assertIn("class_weight", keys)
+
+    def test_class_weight_spec_for_dt_clf(self):
+        from .services.train import HYPERPARAM_SPECS
+        keys = [s["key"] for s in HYPERPARAM_SPECS["dt_clf"]]
+        self.assertIn("class_weight", keys)
+
+    def test_class_weight_not_on_knn_clf(self):
+        from .services.train import HYPERPARAM_SPECS
+        keys = [s["key"] for s in HYPERPARAM_SPECS["knn_clf"]]
+        self.assertNotIn("class_weight", keys)
+
+    def test_class_weight_balanced_applied(self):
+        est = build_estimator("rf_clf", 42, hyperparameters={"class_weight": "balanced"})
+        self.assertEqual(est.class_weight, "balanced")
+
+    def test_class_weight_none_translated_to_None(self):
+        est = build_estimator("logreg", 42, hyperparameters={"class_weight": "none"})
+        self.assertIsNone(est.class_weight)
+
+
+# ── Stage 10b: SMOTE / oversampling ────────────────────────────────────────
+
+class BuildSamplerTest(TestCase):
+    def test_none_returns_none(self):
+        from .services.pipeline import build_sampler
+        self.assertIsNone(build_sampler("none", 42))
+
+    def test_smote_returns_smote_instance(self):
+        from .services.pipeline import build_sampler
+        from imblearn.over_sampling import SMOTE
+        self.assertIsInstance(build_sampler("smote", 42), SMOTE)
+
+    def test_random_over_returns_random_oversampler(self):
+        from .services.pipeline import build_sampler
+        from imblearn.over_sampling import RandomOverSampler
+        self.assertIsInstance(build_sampler("random_over", 42), RandomOverSampler)
+
+
+class BuildFullPipelineWithSamplerTest(TestCase):
+    def test_with_no_sampler_returns_sklearn_pipeline(self):
+        from sklearn.pipeline import Pipeline as SkPipeline
+        from .services.pipeline import build_preprocessing, build_full_pipeline
+        ct = build_preprocessing(ExperimentConfig(), ["x"], [])
+        from sklearn.linear_model import LogisticRegression
+        pipe = build_full_pipeline(ct, LogisticRegression())
+        self.assertIsInstance(pipe, SkPipeline)
+
+    def test_with_sampler_returns_imblearn_pipeline(self):
+        from imblearn.pipeline import Pipeline as ImbPipeline
+        from .services.pipeline import build_preprocessing, build_full_pipeline, build_sampler
+        ct = build_preprocessing(ExperimentConfig(), ["x"], [])
+        from sklearn.linear_model import LogisticRegression
+        sampler = build_sampler("random_over", 42)
+        pipe = build_full_pipeline(ct, LogisticRegression(), sampler=sampler)
+        self.assertIsInstance(pipe, ImbPipeline)
+        # sampler step must be present
+        self.assertIn("sampler", pipe.named_steps)
+
+
+class PrepareExperimentOversamplingTest(TestCase):
+    def test_oversampling_passes_through_for_classification(self):
+        df = pd.DataFrame({
+            "x1": list(range(20)),
+            "x2": [i * 0.5 for i in range(20)],
+            "target": [0] * 17 + [1] * 3,   # imbalanced
+        })
+        config = ExperimentConfig(stratify=False, oversampling="random_over")
+        prepared = prepare_experiment(df, "target", "classification", config)
+        self.assertEqual(prepared.oversampling, "random_over")
+
+    def test_oversampling_forced_to_none_for_regression(self):
+        df = pd.DataFrame({"x": list(range(20)), "y": [i * 0.5 for i in range(20)]})
+        config = ExperimentConfig(stratify=False, scaling="none", oversampling="smote")
+        prepared = prepare_experiment(df, "y", "regression", config)
+        # Regression doesn't use oversampling
+        self.assertEqual(prepared.oversampling, "none")
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class OversamplingViewIntegrationTest(TestCase):
+    def _upload_imbalanced(self):
+        # 30 majority + 6 minority → roughly 5:1 imbalance
+        rows = []
+        for i in range(30):
+            rows.append(f"{i*0.1},{i*0.2},0")
+        for i in range(6):
+            rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("imb.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        from .models import Dataset
+        return Dataset.objects.first()
+
+    def test_experiment_form_renders_oversampling_for_classification(self):
+        dataset = self._upload_imbalanced()
+        response = self.client.get(f"/project1/datasets/{dataset.pk}/experiments/new/")
+        self.assertContains(response, "Oversampling")
+        self.assertContains(response, "SMOTE")
+
+    def test_experiment_stores_oversampling(self):
+        dataset = self._upload_imbalanced()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "Imb",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+            "stratify": "on",
+            "oversampling": "random_over",
+        })
+        from .models import Experiment
+        exp = Experiment.objects.first()
+        self.assertEqual(exp.oversampling, "random_over")
+
+    def test_experiment_detail_shows_oversampling(self):
+        dataset = self._upload_imbalanced()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "ShowSMOTE",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+            "stratify": "on",
+            "oversampling": "smote",
+        })
+        from .models import Experiment
+        exp = Experiment.objects.first()
+        response = self.client.get(f"/project1/experiments/{exp.pk}/")
+        self.assertContains(response, "SMOTE")
+
+    def test_training_with_random_oversampling_succeeds(self):
+        dataset = self._upload_imbalanced()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "OverExp",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+            "stratify": "",            # avoid stratify error with rare class
+            "oversampling": "random_over",
+        })
+        from .models import Experiment, TrainedModel
+        experiment = Experiment.objects.first()
+        self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+            "name": "RandOver",
+            "algorithm": "logreg",
+            "metric": "f1",
+            "cv_folds": "0",
+        })
+        m = TrainedModel.objects.first()
+        self.assertTrue(m.is_trained)
+
+    def test_saved_pipeline_with_sampler_is_imblearn_pipeline(self):
+        import joblib
+        from imblearn.pipeline import Pipeline as ImbPipeline
+        dataset = self._upload_imbalanced()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "ImbPipe",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+            "stratify": "",
+            "oversampling": "random_over",
+        })
+        from .models import Experiment, TrainedModel
+        experiment = Experiment.objects.first()
+        self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+            "name": "Verify",
+            "algorithm": "logreg",
+            "metric": "f1",
+            "cv_folds": "0",
+        })
+        m = TrainedModel.objects.first()
+        with m.model_file.open("rb") as f:
+            pipeline = joblib.load(f)
+        self.assertIsInstance(pipeline, ImbPipeline)
+        self.assertIn("sampler", pipeline.named_steps)
+
+
 # ── Stage 12: cross-validation ─────────────────────────────────────────────
 
 class CrossValidatePipelineTest(TestCase):

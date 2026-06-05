@@ -103,13 +103,41 @@ def build_preprocessing(config, num_cols: list[str], cat_cols: list[str]) -> Col
     )
 
 
-def build_full_pipeline(preprocessing, estimator) -> Pipeline:
-    """Wrap (preprocessor, estimator) into a single sklearn Pipeline.
+def build_sampler(oversampling: str, random_seed: int = 42):
+    """Return an imblearn sampler (or None when oversampling is disabled).
+
+    - 'smote'        → SMOTE synthetic minority oversampling
+    - 'random_over'  → simple random oversampling with replacement
+    - 'none'         → None (no sampling step)
+    """
+    if oversampling == "smote":
+        from imblearn.over_sampling import SMOTE
+        return SMOTE(random_state=random_seed)
+    if oversampling == "random_over":
+        from imblearn.over_sampling import RandomOverSampler
+        return RandomOverSampler(random_state=random_seed)
+    return None
+
+
+def build_full_pipeline(preprocessing, estimator, sampler=None):
+    """Wrap (preprocessor, [sampler], estimator) into a single Pipeline.
+
+    Without a sampler returns sklearn's Pipeline. With a sampler returns
+    imblearn's Pipeline (a drop-in extension) so the sampler runs only at
+    fit time, not at predict time.
 
     The returned pipeline can be fit on raw DataFrame input and persisted with
     joblib as a single artifact.
     """
-    return Pipeline([
+    if sampler is None:
+        return Pipeline([
+            ("preprocessor", preprocessing),
+            ("estimator", estimator),
+        ])
+
+    from imblearn.pipeline import Pipeline as ImbPipeline
+    return ImbPipeline([
         ("preprocessor", preprocessing),
+        ("sampler", sampler),
         ("estimator", estimator),
     ])

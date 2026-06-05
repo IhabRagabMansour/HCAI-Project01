@@ -78,6 +78,11 @@ class Experiment(models.Model):
         ("minmax", "Min-max (0–1)"),
         ("none", "None"),
     ]
+    OVERSAMPLING_CHOICES = [
+        ("none", "None"),
+        ("smote", "SMOTE (synthetic minority oversampling)"),
+        ("random_over", "Random oversampling"),
+    ]
 
     dataset = models.ForeignKey(
         Dataset, on_delete=models.CASCADE, related_name="experiments"
@@ -99,6 +104,9 @@ class Experiment(models.Model):
     random_seed = models.PositiveIntegerField(default=42)
     stratify = models.BooleanField(default=True)
     excluded_columns = models.JSONField(default=list, blank=True)
+    oversampling = models.CharField(
+        max_length=20, choices=OVERSAMPLING_CHOICES, default="none"
+    )
 
     # Results (populated by prepare_experiment)
     n_train = models.PositiveIntegerField(null=True, blank=True)
@@ -142,6 +150,7 @@ class Experiment(models.Model):
             random_seed=self.random_seed,
             stratify=self.stratify,
             excluded_columns=list(self.excluded_columns or []),
+            oversampling=self.oversampling,
         )
 
 

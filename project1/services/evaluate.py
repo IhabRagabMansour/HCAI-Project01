@@ -196,11 +196,13 @@ def cross_validate_pipeline(
     """
     from sklearn.model_selection import KFold, StratifiedKFold, cross_val_score
 
-    from .pipeline import build_full_pipeline
+    from .pipeline import build_full_pipeline, build_sampler
     from .train import build_estimator
 
     estimator = build_estimator(algorithm, random_seed, hyperparameters=hyperparameters)
-    pipeline = build_full_pipeline(prepared.preprocessing, estimator)
+    oversampling = getattr(prepared, "oversampling", "none") or "none"
+    sampler = build_sampler(oversampling, random_seed)
+    pipeline = build_full_pipeline(prepared.preprocessing, estimator, sampler=sampler)
 
     if problem_type == "classification":
         # Stratify needs every class to have at least cv_folds samples

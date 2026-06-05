@@ -103,6 +103,17 @@
             </label>
             <p class="p1-hint">Keeps the class proportion equal in both train and test sets. Recommended when classes are imbalanced. Automatically disabled if any class has too few samples.</p>
         </div>
+
+        <div class="p1-form-group">
+            <label class="p1-label" for="{{ form.oversampling.id_for_label }}">Oversampling (imbalance handling)</label>
+            {{ form.oversampling }}
+            <p class="p1-hint">
+                Applied only during training (not at predict time). Useful when one class dominates the others.<br>
+                <strong>None</strong> — no resampling.<br>
+                <strong>SMOTE</strong> — generates synthetic minority-class samples by interpolation.<br>
+                <strong>Random oversampling</strong> — duplicates random minority-class rows.
+            </p>
+        </div>
         {% endif %}
     </div>
 

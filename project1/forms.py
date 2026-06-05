@@ -73,7 +73,7 @@ class ExperimentForm(forms.ModelForm):
         model = Experiment
         fields = [
             "name", "missing_strategy", "categorical_encoding",
-            "scaling", "test_size", "random_seed", "stratify",
+            "scaling", "test_size", "random_seed", "stratify", "oversampling",
         ]
         widgets = {
             "test_size": forms.NumberInput(attrs={"step": "0.05", "min": "0.10", "max": "0.50"}),
@@ -81,11 +81,20 @@ class ExperimentForm(forms.ModelForm):
             "name": forms.TextInput(attrs={"placeholder": "Leave blank to auto-name"}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # oversampling is optional — falls back to model default "none" if blank
+        self.fields["oversampling"].required = False
+
     def clean_test_size(self):
         v = self.cleaned_data["test_size"]
         if not (0.10 <= v <= 0.50):
             raise forms.ValidationError("Test size must be between 0.10 and 0.50.")
         return v
+
+    def clean_oversampling(self):
+        v = self.cleaned_data.get("oversampling")
+        return v or "none"
 
 
 class TrainedModelForm(forms.ModelForm):

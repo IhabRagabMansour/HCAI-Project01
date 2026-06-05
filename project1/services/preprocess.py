@@ -19,6 +19,7 @@ class ExperimentConfig:
     random_seed: int = 42
     stratify: bool = True
     excluded_columns: list = None          # column names to drop before preprocessing
+    oversampling: str = "none"             # none | smote | random_over
 
     def __post_init__(self):
         if self.excluded_columns is None:
@@ -50,6 +51,7 @@ class PreparedData:
     n_train: int
     n_test: int
     stratify_used: bool
+    oversampling: str = "none"  # carried from config so train_and_score can build the sampler
 
 
 # ── Step 1: missing values ──────────────────────────────────────────────────
@@ -253,4 +255,5 @@ def prepare_experiment(
         n_train=len(y_train),
         n_test=len(y_test),
         stratify_used=stratify_used,
+        oversampling=(config.oversampling if problem_type == "classification" else "none"),
     )
