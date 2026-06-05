@@ -1184,6 +1184,138 @@ class TrainedModelRegressionFlowTest(TestCase):
         self.assertNotContains(response, "Accuracy")
 
 
+# ── Stage 14: cross-experiment comparison ──────────────────────────────────
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class DatasetCompareTest(TestCase):
+    def setUp(self):
+        rows = []
+        for i in range(15):
+            rows.append(f"{i*0.1},{i*0.2},0")
+        for i in range(15):
+            rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("dscmp.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        from .models import Dataset
+        self.dataset = Dataset.objects.first()
+
+    def _make_experiment(self, name, encoding="onehot", scaling="standard"):
+        self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": name,
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": encoding,
+            "scaling": scaling,
+            "test_size": "0.2",
+            "random_seed": "42",
+            "stratify": "on",
+        })
+        from .models import Experiment
+        return Experiment.objects.get(name=name)
+
+    def _train(self, experiment, name, algorithm="logreg", metric="accuracy"):
+        self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+            "name": name,
+            "algorithm": algorithm,
+            "metric": metric,
+            "cv_folds": "0",
+        })
+        from .models import TrainedModel
+        return TrainedModel.objects.get(name=name)
+
+    def test_compare_view_returns_200_with_no_models(self):
+        response = self.client.get(f"/project1/datasets/{self.dataset.pk}/compare/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "No trained models")
+
+    def test_compare_view_lists_all_models_across_experiments(self):
+        e1 = self._make_experiment("ExpA")
+        e2 = self._make_experiment("ExpB", scaling="minmax")
+        self._train(e1, "ModelA1")
+        self._train(e2, "ModelB1", algorithm="rf_clf")
+        response = self.client.get(f"/project1/datasets/{self.dataset.pk}/compare/")
+        self.assertContains(response, "ModelA1")
+        self.assertContains(response, "ModelB1")
+        # And each experiment heading shown
+        self.assertContains(response, "ExpA")
+        self.assertContains(response, "ExpB")
+
+    def test_no_selection_does_not_render_comparison_table(self):
+        e1 = self._make_experiment("E1")
+        self._train(e1, "MA")
+        self._train(e1, "MB", algorithm="rf_clf")
+        response = self.client.get(f"/project1/datasets/{self.dataset.pk}/compare/")
+        self.assertNotContains(response, "Side-by-side")
+
+    def test_with_2_selected_renders_comparison_table(self):
+        e1 = self._make_experiment("E1")
+        m1 = self._train(e1, "MA")
+        m2 = self._train(e1, "MB", algorithm="rf_clf")
+        response = self.client.get(
+            f"/project1/datasets/{self.dataset.pk}/compare/?ids={m1.pk}&ids={m2.pk}"
+        )
+        self.assertContains(response, "Side-by-side")
+        self.assertContains(response, "Bar chart")
+
+    def test_comparison_table_includes_preprocessing_recipe_rows(self):
+        e1 = self._make_experiment("E1", encoding="onehot")
+        e2 = self._make_experiment("E2", encoding="label")
+        m1 = self._train(e1, "MA")
+        m2 = self._train(e2, "MB")
+        response = self.client.get(
+            f"/project1/datasets/{self.dataset.pk}/compare/?ids={m1.pk}&ids={m2.pk}"
+        )
+        self.assertContains(response, "Encoding")
+        self.assertContains(response, "Scaling")
+        self.assertContains(response, "Experiment")
+
+    def test_best_per_metric_highlighted(self):
+        e1 = self._make_experiment("E1")
+        m1 = self._train(e1, "MA")
+        m2 = self._train(e1, "MB", algorithm="rf_clf")
+        response = self.client.get(
+            f"/project1/datasets/{self.dataset.pk}/compare/?ids={m1.pk}&ids={m2.pk}"
+        )
+        self.assertContains(response, "★")
+
+    def test_chart_payload_embedded_when_2_or_more_selected(self):
+        e1 = self._make_experiment("E1")
+        m1 = self._train(e1, "MA")
+        m2 = self._train(e1, "MB", algorithm="rf_clf")
+        response = self.client.get(
+            f"/project1/datasets/{self.dataset.pk}/compare/?ids={m1.pk}&ids={m2.pk}"
+        )
+        self.assertContains(response, 'id="compare-payload"')
+        self.assertContains(response, 'id="compare-chart"')
+
+    def test_compare_button_hidden_with_fewer_than_2_models(self):
+        e1 = self._make_experiment("E1")
+        self._train(e1, "Single")
+        response = self.client.get(f"/project1/datasets/{self.dataset.pk}/")
+        self.assertNotContains(response, "Compare models")
+
+    def test_compare_button_visible_with_2_plus_models(self):
+        e1 = self._make_experiment("E1")
+        self._train(e1, "First")
+        self._train(e1, "Second", algorithm="rf_clf")
+        response = self.client.get(f"/project1/datasets/{self.dataset.pk}/")
+        self.assertContains(response, "Compare models")
+
+    def test_models_from_different_experiments_can_be_compared(self):
+        e1 = self._make_experiment("E1", encoding="onehot")
+        e2 = self._make_experiment("E2", encoding="label")
+        m1 = self._train(e1, "FromE1")
+        m2 = self._train(e2, "FromE2")
+        response = self.client.get(
+            f"/project1/datasets/{self.dataset.pk}/compare/?ids={m1.pk}&ids={m2.pk}"
+        )
+        self.assertContains(response, "FromE1")
+        self.assertContains(response, "FromE2")
+        # Both encoding strategies surface in the recipe rows
+        self.assertContains(response, "One-hot encoding")
+        self.assertContains(response, "Label encoding")
+
+
 # ── Stage 10a: class_weight hyperparameter ─────────────────────────────────
 
 class ClassWeightHyperparameterTest(TestCase):

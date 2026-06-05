@@ -413,6 +413,73 @@
     text-decoration: underline;
 }
 
+/* ── Cross-experiment compare: model selection ── */
+.p1-cmp-group {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    background: #fafbfd;
+}
+
+.p1-cmp-group-title {
+    font-size: 16px;
+    color: #275CB2;
+    margin: 0 0 8px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.p1-cmp-recipe {
+    color: #777;
+    font-size: 13px;
+    font-weight: normal;
+    margin-left: 10px;
+    font-style: italic;
+}
+
+.p1-cmp-models {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.p1-cmp-model-row {
+    display: grid;
+    grid-template-columns: 24px 1fr 1fr 2fr;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.p1-cmp-model-row:hover {
+    background: #eef2f8;
+}
+
+.p1-cmp-model-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.p1-cmp-model-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.p1-cmp-model-algo {
+    color: #555;
+}
+
+.p1-cmp-model-metric {
+    color: #777;
+    font-size: 13px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
 /* ── Single-row prediction ── */
 .p1-pred-grid {
     display: grid;

@@ -124,6 +124,13 @@ def dataset_detail(request, pk):
         })
 
     experiments = list(dataset.experiments.all()) if dataset.is_parsed else []
+    trained_models_count = (
+        TrainedModel.objects
+        .filter(experiment__dataset=dataset)
+        .exclude(evaluation__isnull=True)
+        .count()
+        if dataset.is_parsed else 0
+    )
 
     return render(request, "project1/dataset_detail.html", {
         "dataset": dataset,
@@ -133,6 +140,7 @@ def dataset_detail(request, pk):
         "sort_col": sort_col,
         "sort_order": sort_order,
         "experiments": experiments,
+        "trained_models_count": trained_models_count,
         "numeric_cols": numeric_cols,
         "histogram_cols": histogram_cols,
         "class_names": class_names,
@@ -724,6 +732,137 @@ def experiment_compare(request, pk):
         "experiment": experiment,
         "dataset": experiment.dataset,
         "models": models,
+        "metric_rows": metric_rows,
+        "metric_specs": metric_specs,
+        "selected_metric_key": selected_metric_key,
+        "chart_payload": chart_payload,
+        "problem_type": problem_type,
+    })
+
+
+def dataset_compare(request, pk):
+    """Compare trained models across ALL experiments belonging to a dataset.
+    Selection state lives in the URL via ?ids=1&ids=3 (Django getlist)."""
+    dataset = get_object_or_404(Dataset, pk=pk)
+
+    all_models = list(
+        TrainedModel.objects
+        .filter(experiment__dataset=dataset)
+        .exclude(evaluation__isnull=True)
+        .select_related("experiment")
+        .order_by("experiment_id", "created_at")
+    )
+
+    # Parse selection from query string
+    raw_ids = request.GET.getlist("ids")
+    selected_ids: set = set()
+    for s in raw_ids:
+        if s.isdigit():
+            selected_ids.add(int(s))
+    selected_models = [m for m in all_models if m.pk in selected_ids]
+
+    # Group models by experiment for the selection table
+    grouped: dict = {}
+    for m in all_models:
+        grouped.setdefault(m.experiment_id, {"experiment": m.experiment, "models": []})
+        grouped[m.experiment_id]["models"].append(m)
+    grouped_list = list(grouped.values())
+
+    problem_type = dataset.problem_type
+    if problem_type == "classification":
+        metric_specs = [
+            ("accuracy",  "Accuracy",            "higher"),
+            ("f1",        "F1 (weighted)",       "higher"),
+            ("precision", "Precision (weighted)", "higher"),
+            ("recall",    "Recall (weighted)",   "higher"),
+        ]
+    else:
+        metric_specs = [
+            ("r2",   "R²",   "higher"),
+            ("rmse", "RMSE", "lower"),
+            ("mae",  "MAE",  "lower"),
+        ]
+
+    metric_rows = []
+    chart_data_metrics: dict = {}
+
+    if len(selected_models) >= 2:
+        # Recipe rows (one per dimension that may differ between experiments)
+        recipe_specs = [
+            ("Experiment", lambda m: m.experiment.name),
+            ("Algorithm",  lambda m: m.algorithm_display),
+            ("Trained with", lambda m: m.metric_display),
+            ("Encoding",   lambda m: m.experiment.get_categorical_encoding_display()),
+            ("Scaling",    lambda m: m.experiment.get_scaling_display()),
+            ("Missing",    lambda m: m.experiment.get_missing_strategy_display()),
+            ("Oversampling", lambda m: m.experiment.get_oversampling_display()),
+            ("Test size",  lambda m: f"{m.experiment.test_size_pct}%"),
+        ]
+        for label, getter in recipe_specs:
+            metric_rows.append({
+                "display": label,
+                "cells": [{"display_value": getter(m), "is_best": False} for m in selected_models],
+            })
+
+        # Metric rows (train + test)
+        for key, display, direction in metric_specs:
+            train_values = [m.evaluation.get("train", {}).get(key) for m in selected_models]
+            test_values  = [m.evaluation.get("test",  {}).get(key) for m in selected_models]
+            best_train = _best_index(train_values, direction)
+            best_test  = _best_index(test_values, direction)
+
+            metric_rows.append({
+                "display": f"Train {display}",
+                "cells": [
+                    {"display_value": "—" if v is None else f"{v:.4f}",
+                     "is_best": (i == best_train)}
+                    for i, v in enumerate(train_values)
+                ],
+            })
+            metric_rows.append({
+                "display": f"Test {display}",
+                "cells": [
+                    {"display_value": "—" if v is None else f"{v:.4f}",
+                     "is_best": (i == best_test)}
+                    for i, v in enumerate(test_values)
+                ],
+            })
+
+            chart_data_metrics[key] = {
+                "display": display,
+                "train": train_values,
+                "test": test_values,
+            }
+
+        # Training time row
+        times = [m.train_duration_ms for m in selected_models]
+        best_time = _best_index(times, "lower")
+        metric_rows.append({
+            "display": "Training time (ms)",
+            "cells": [
+                {"display_value": "—" if v is None else f"{v}",
+                 "is_best": (i == best_time)}
+                for i, v in enumerate(times)
+            ],
+        })
+
+    valid_keys = [k for k, _, _ in metric_specs]
+    selected_metric_key = request.GET.get("metric")
+    if selected_metric_key not in valid_keys:
+        selected_metric_key = valid_keys[0] if valid_keys else ""
+
+    chart_payload = {
+        "labels": [m.name for m in selected_models],
+        "metrics": chart_data_metrics,
+        "selected": selected_metric_key,
+    }
+
+    return render(request, "project1/dataset_compare.html", {
+        "dataset": dataset,
+        "grouped_list": grouped_list,
+        "all_models": all_models,
+        "selected_models": selected_models,
+        "selected_ids": selected_ids,
         "metric_rows": metric_rows,
         "metric_specs": metric_specs,
         "selected_metric_key": selected_metric_key,

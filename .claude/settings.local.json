@@ -3,7 +3,8 @@
     "allow": [
       "Bash(python manage.py startapp project1)",
       "Read(//c/Users/mafia/Desktop/HCAI/**)",
-      "Bash(pip show *)"
+      "Bash(pip show *)",
+      "Bash(awk '/^def experiment_compare/,/^def [a-z]/' project1/views.py)"
     ]
   }
 }

@@ -278,6 +278,9 @@
     {% if dataset.is_parsed %}
     <a href="{% url 'project1:experiment_create' dataset.pk %}"><button type="button" class="btn-success">+ New Experiment</button></a>
     {% endif %}
+    {% if trained_models_count >= 2 %}
+    <a href="{% url 'project1:dataset_compare' dataset.pk %}"><button type="button">⇄ Compare models</button></a>
+    {% endif %}
     <a href="{% url 'project1:dataset_delete' dataset.pk %}"><button type="button" class="btn-danger">Delete</button></a>
 </div>
 {% endblock %}

@@ -19,4 +19,5 @@ urlpatterns = [
     path("models/<int:pk>/delete/", views.model_delete, name="model_delete"),
     path("models/<int:pk>/predict/", views.model_predict, name="model_predict"),
     path("experiments/<int:pk>/compare/", views.experiment_compare, name="experiment_compare"),
+    path("datasets/<int:pk>/compare/", views.dataset_compare, name="dataset_compare"),
 ]
