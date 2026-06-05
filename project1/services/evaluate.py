@@ -176,6 +176,50 @@ def compute_feature_importance(estimator_or_pipeline, feature_names: list[str]) 
     return items
 
 
+# ── Permutation feature importance ─────────────────────────────────────────
+
+def compute_permutation_importance(
+    pipeline_or_estimator,
+    X,
+    y,
+    feature_names: list[str],
+    n_repeats: int = 10,
+    random_seed: int = 42,
+) -> list[dict] | None:
+    """Return [{name, value (mean), std}, ...] sorted desc, or None when CV failed.
+
+    Permutation importance is model-agnostic — it shuffles each feature in turn
+    and measures the score drop. Works for any estimator with a ``predict``
+    method, including KNN and SVM-RBF where ``feature_importances_`` / ``coef_``
+    aren't available.
+
+    Input X is a raw DataFrame; when wrapped in a sklearn Pipeline the
+    preprocessing is applied internally. The returned ``feature_names`` should
+    therefore correspond to X's columns (raw), not the post-preprocessing
+    expanded names.
+    """
+    try:
+        from sklearn.inspection import permutation_importance
+        result = permutation_importance(
+            pipeline_or_estimator, X, y,
+            n_repeats=n_repeats, random_state=random_seed, n_jobs=1,
+        )
+    except Exception:
+        return None
+
+    means = np.asarray(result.importances_mean)
+    stds  = np.asarray(result.importances_std)
+    if len(means) != len(feature_names):
+        return None
+
+    items = [
+        {"name": n, "value": float(m), "std": float(s)}
+        for n, m, s in zip(feature_names, means, stds)
+    ]
+    items.sort(key=lambda x: x["value"], reverse=True)
+    return items
+
+
 # ── Cross-validation ───────────────────────────────────────────────────────
 
 def cross_validate_pipeline(
@@ -262,5 +306,17 @@ def build_evaluation(
     else:
         raise ValueError(f"Unknown problem type: {problem_type!r}")
 
-    result["feature_importance"] = compute_feature_importance(estimator, feature_names)
+    fi = compute_feature_importance(estimator, feature_names)
+    if fi is not None:
+        result["feature_importance"] = fi
+        result["permutation_based"] = False
+    else:
+        # Fallback: model-agnostic permutation importance. Use raw input
+        # columns (not the encoded names) so the user sees meaningful labels.
+        raw_names = list(prepared.X_test.columns)
+        fi_perm = compute_permutation_importance(
+            estimator, prepared.X_test, prepared.y_test, raw_names,
+        )
+        result["feature_importance"] = fi_perm
+        result["permutation_based"] = fi_perm is not None
     return result

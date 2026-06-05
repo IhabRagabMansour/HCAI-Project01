@@ -196,7 +196,20 @@
             options: {
                 responsive: true,
                 indexAxis: "y",
-                plugins: { legend: { display: false } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                const item = top[ctx.dataIndex];
+                                const base = `Importance: ${item.value.toFixed(4)}`;
+                                return item.std !== undefined
+                                    ? `${base} ± ${item.std.toFixed(4)}`
+                                    : base;
+                            },
+                        },
+                    },
+                },
                 scales: {
                     x: { title: { display: true, text: "Importance" }, beginAtZero: true },
                 },

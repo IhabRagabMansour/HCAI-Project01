@@ -1184,6 +1184,169 @@ class TrainedModelRegressionFlowTest(TestCase):
         self.assertNotContains(response, "Accuracy")
 
 
+# ── Stage 15: permutation feature importance ───────────────────────────────
+
+class PermutationImportanceTest(TestCase):
+    def setUp(self):
+        np.random.seed(0)
+        df = pd.DataFrame({
+            "x1": np.concatenate([np.random.randn(40), np.random.randn(40) + 5]),
+            "x2": np.concatenate([np.random.randn(40), np.random.randn(40) + 5]),
+            "target": [0] * 40 + [1] * 40,
+        })
+        self.prepared = prepare_experiment(df, "target", "classification",
+                                           ExperimentConfig(stratify=False))
+
+    def _fit_pipeline(self, algo):
+        # Build the full sklearn Pipeline and fit it like the production view does
+        from .services.pipeline import build_full_pipeline
+        estimator = build_estimator(algo, 42)
+        pipeline = build_full_pipeline(self.prepared.preprocessing, estimator)
+        pipeline.fit(self.prepared.X_train, self.prepared.y_train)
+        return pipeline
+
+    def test_permutation_returns_sorted_list_for_knn(self):
+        from .services.evaluate import compute_permutation_importance
+        pipeline = self._fit_pipeline("knn_clf")
+        raw_names = list(self.prepared.X_test.columns)
+        result = compute_permutation_importance(
+            pipeline, self.prepared.X_test, self.prepared.y_test, raw_names,
+        )
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), 2)
+        values = [item["value"] for item in result]
+        self.assertEqual(values, sorted(values, reverse=True))
+
+    def test_permutation_returns_sorted_list_for_svm_rbf(self):
+        from .services.evaluate import compute_permutation_importance
+        pipeline = self._fit_pipeline("svm")  # default kernel is rbf
+        raw_names = list(self.prepared.X_test.columns)
+        result = compute_permutation_importance(
+            pipeline, self.prepared.X_test, self.prepared.y_test, raw_names,
+        )
+        self.assertIsNotNone(result)
+
+    def test_each_item_has_mean_and_std(self):
+        from .services.evaluate import compute_permutation_importance
+        pipeline = self._fit_pipeline("rf_clf")
+        raw_names = list(self.prepared.X_test.columns)
+        result = compute_permutation_importance(
+            pipeline, self.prepared.X_test, self.prepared.y_test, raw_names,
+        )
+        for item in result:
+            self.assertIn("name", item)
+            self.assertIn("value", item)
+            self.assertIn("std", item)
+            self.assertGreaterEqual(item["std"], 0.0)
+
+    def test_returns_none_on_length_mismatch(self):
+        from .services.evaluate import compute_permutation_importance
+        pipeline = self._fit_pipeline("rf_clf")
+        result = compute_permutation_importance(
+            pipeline, self.prepared.X_test, self.prepared.y_test, ["only_one"],
+        )
+        self.assertIsNone(result)
+
+
+class BuildEvaluationFallbackTest(TestCase):
+    """Verify build_evaluation uses permutation as fallback when the
+    model-native path (feature_importances_ / coef_) returns None."""
+
+    def setUp(self):
+        np.random.seed(0)
+        df = pd.DataFrame({
+            "x1": np.concatenate([np.random.randn(40), np.random.randn(40) + 5]),
+            "x2": np.concatenate([np.random.randn(40), np.random.randn(40) + 5]),
+            "target": [0] * 40 + [1] * 40,
+        })
+        self.prepared = prepare_experiment(df, "target", "classification",
+                                           ExperimentConfig(stratify=False))
+
+    def _fit(self, algo):
+        from .services.pipeline import build_full_pipeline
+        est = build_estimator(algo, 42)
+        pipe = build_full_pipeline(self.prepared.preprocessing, est)
+        pipe.fit(self.prepared.X_train, self.prepared.y_train)
+        return pipe
+
+    def test_random_forest_uses_native_not_permutation(self):
+        pipeline = self._fit("rf_clf")
+        result = build_evaluation(pipeline, self.prepared, "classification",
+                                  self.prepared.label_map, self.prepared.feature_names)
+        self.assertIsNotNone(result["feature_importance"])
+        self.assertFalse(result["permutation_based"])
+
+    def test_knn_falls_back_to_permutation(self):
+        pipeline = self._fit("knn_clf")
+        result = build_evaluation(pipeline, self.prepared, "classification",
+                                  self.prepared.label_map, self.prepared.feature_names)
+        self.assertIsNotNone(result["feature_importance"])
+        self.assertTrue(result["permutation_based"])
+
+    def test_svm_rbf_falls_back_to_permutation(self):
+        pipeline = self._fit("svm")
+        result = build_evaluation(pipeline, self.prepared, "classification",
+                                  self.prepared.label_map, self.prepared.feature_names)
+        self.assertIsNotNone(result["feature_importance"])
+        self.assertTrue(result["permutation_based"])
+
+    def test_permutation_uses_raw_column_names(self):
+        pipeline = self._fit("knn_clf")
+        result = build_evaluation(pipeline, self.prepared, "classification",
+                                  self.prepared.label_map, self.prepared.feature_names)
+        names = [item["name"] for item in result["feature_importance"]]
+        # Raw input columns, not post-encoding expansions
+        self.assertSetEqual(set(names), {"x1", "x2"})
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class PermutationImportanceUITest(TestCase):
+    def _setup_with_algorithm(self, algorithm):
+        rows = []
+        for i in range(15):
+            rows.append(f"{i*0.1},{i*0.2},0")
+        for i in range(15):
+            rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("perm.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        from .models import Dataset, Experiment, TrainedModel
+        dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "Exp",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        experiment = Experiment.objects.first()
+        self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+            "name": "M",
+            "algorithm": algorithm,
+            "metric": "accuracy",
+            "cv_folds": "0",
+        })
+        return TrainedModel.objects.first()
+
+    def test_knn_detail_shows_permutation_label(self):
+        m = self._setup_with_algorithm("knn_clf")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "permutation")
+
+    def test_rf_detail_does_not_show_permutation_label(self):
+        m = self._setup_with_algorithm("rf_clf")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertNotContains(response, "(permutation)")
+
+    def test_knn_now_has_feature_importance_canvas(self):
+        # Before this stage, KNN said "Not available for this algorithm"
+        m = self._setup_with_algorithm("knn_clf")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, 'id="fi-chart"')
+        self.assertNotContains(response, "Not available for this algorithm")
+
+
 # ── Stage 18: re-evaluate, download, spinner ───────────────────────────────
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
@@ -2400,11 +2563,12 @@ class ModelDetailPlotsTest(TestCase):
         response = self.client.get(f"/project1/models/{m.pk}/")
         self.assertContains(response, 'id="fi-chart"')
 
-    def test_feature_importance_not_available_for_knn(self):
+    def test_feature_importance_uses_permutation_for_knn(self):
+        # After Stage 15: KNN gets permutation importance instead of "Not available"
         m = self._train("knn_clf", "accuracy", "classification")
         response = self.client.get(f"/project1/models/{m.pk}/")
-        self.assertContains(response, "Not available")
-        self.assertNotContains(response, 'id="fi-chart"')
+        self.assertContains(response, 'id="fi-chart"')
+        self.assertContains(response, "permutation")
 
     def test_chart_js_scripts_loaded(self):
         m = self._train("rf_clf", "f1", "classification")

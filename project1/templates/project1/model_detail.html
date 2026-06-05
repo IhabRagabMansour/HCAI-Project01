@@ -141,11 +141,18 @@
 {% endif %}
 
 <div class="p1-section">
-    <h2 class="p1-section-title">Feature importance</h2>
+    <h2 class="p1-section-title">
+        Feature importance{% if model.evaluation.permutation_based %} <span class="p1-page-info">(permutation)</span>{% endif %}
+    </h2>
     {% if model.evaluation.feature_importance %}
     <div class="p1-chart-wrap">
         <canvas id="fi-chart"></canvas>
     </div>
+    {% if model.evaluation.permutation_based %}
+    <p class="p1-hint" style="text-align:center;">
+        Model-agnostic: measures the score drop when each <em>raw input feature</em> is shuffled. Hover bars to see ± standard deviation across 10 repeats.
+    </p>
+    {% endif %}
     {% else %}
     <p class="p1-empty-msg"><em>Not available for this algorithm.</em></p>
     {% endif %}
