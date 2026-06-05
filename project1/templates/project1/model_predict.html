@@ -1,0 +1,97 @@
+{% extends 'project1/base.html' %}
+{% load static %}
+
+{% block page_title %}Predict — {{ model.name }}{% endblock %}
+
+{% block project1_content %}
+
+<div class="p1-section">
+    <h2 class="p1-section-title">Predict on new data</h2>
+    <table class="p1-detail-table">
+        <tr><th>Model</th><td>{{ model.name }} ({{ model.algorithm_display }})</td></tr>
+        <tr><th>Dataset</th><td>{{ dataset.original_name }}</td></tr>
+        <tr><th>Target</th><td><code>{{ dataset.target_name }}</code></td></tr>
+        <tr><th>Problem type</th><td>{{ dataset.get_problem_type_display }}</td></tr>
+    </table>
+</div>
+
+{% if pred_errors %}
+<div class="p1-section">
+    <div class="p1-msg p1-msg--error">
+        <ul class="p1-field-errors" style="margin:0;">
+            {% for e in pred_errors %}<li>{{ e }}</li>{% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
+
+{% if pred_label is not None %}
+<div class="p1-section">
+    <h2 class="p1-section-title">Prediction</h2>
+    <div class="p1-pred-result">
+        <div class="p1-pred-value">{{ pred_label }}</div>
+        {% if is_classification %}
+            <div class="p1-pred-subtitle">Predicted class for <code>{{ dataset.target_name }}</code></div>
+        {% else %}
+            <div class="p1-pred-subtitle">
+                Predicted <code>{{ dataset.target_name }}</code>
+                {% if test_rmse %}&nbsp;·&nbsp; typical error ≈ {{ test_rmse|floatformat:4 }} (test RMSE){% endif %}
+            </div>
+        {% endif %}
+    </div>
+
+    {% if pred_probs_list %}
+    <div class="p1-chart-wrap" style="max-width: 600px;">
+        <canvas id="proba-chart"></canvas>
+    </div>
+    {{ pred_probs_list|json_script:"proba-data" }}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="{% static 'project1/predict_chart.js' %}"></script>
+    {% endif %}
+</div>
+{% endif %}
+
+<form method="post">
+    {% csrf_token %}
+
+    <div class="p1-section">
+        <h2 class="p1-section-title">Feature values</h2>
+        <p class="p1-hint" style="text-align:center;">
+            Defaults are the median (numeric) or most-frequent value (categorical) from the training data.
+            Press <strong>Random sample</strong> to copy a real row from the dataset.
+        </p>
+
+        <div class="p1-pred-grid">
+            {% for spec in specs %}
+            <div class="p1-form-group">
+                <label class="p1-label" for="id_f__{{ spec.name }}">
+                    <code>{{ spec.name }}</code>
+                    <span class="p1-optional">{{ spec.dtype }}</span>
+                </label>
+                {% if spec.input_type == "number" %}
+                    <input type="number" step="any"
+                           id="id_f__{{ spec.name }}"
+                           name="f__{{ spec.name }}"
+                           value="{{ spec.current }}">
+                {% else %}
+                    <select id="id_f__{{ spec.name }}" name="f__{{ spec.name }}">
+                        {% for choice in spec.choices %}
+                            <option value="{{ choice }}"{% if spec.current == choice %} selected{% endif %}>{{ choice }}</option>
+                        {% endfor %}
+                    </select>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="p1-action-row">
+        <a href="{% url 'project1:model_detail' model.pk %}">
+            <button type="button">Back to model</button>
+        </a>
+        <button type="submit" name="action" value="sample">🎲 Random sample</button>
+        <button type="submit" name="action" value="predict" class="btn-success">Predict</button>
+    </div>
+</form>
+
+{% endblock %}

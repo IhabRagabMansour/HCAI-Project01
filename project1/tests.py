@@ -1184,6 +1184,166 @@ class TrainedModelRegressionFlowTest(TestCase):
         self.assertNotContains(response, "Accuracy")
 
 
+# ── Stage 13: single-row prediction ────────────────────────────────────────
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ModelPredictTest(TestCase):
+    def _setup_classification(self):
+        rows = []
+        for i in range(15):
+            rows.append(f"{i*0.1},{i*0.2},cat")
+        for i in range(15):
+            rows.append(f"{5 + i*0.1},{5 + i*0.2},dog")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("pred.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        from .models import Dataset, Experiment, TrainedModel
+        dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "ExpPred",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        experiment = Experiment.objects.first()
+        self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+            "name": "PredRF",
+            "algorithm": "rf_clf",
+            "metric": "accuracy",
+        })
+        return TrainedModel.objects.first()
+
+    def _setup_regression(self):
+        rows = "\n".join(f"{i*0.1},{i*0.2 + 1.0}" for i in range(40))
+        csv = f"x,y\n{rows}\n".encode()
+        uploaded = SimpleUploadedFile("predreg.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        from .models import Dataset, Experiment, TrainedModel
+        dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "ExpPredReg",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "none",
+            "test_size": "0.2",
+            "random_seed": "42",
+            "stratify": "",
+        })
+        experiment = Experiment.objects.first()
+        self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+            "name": "PredLin",
+            "algorithm": "linreg",
+            "metric": "rmse",
+        })
+        return TrainedModel.objects.first()
+
+    # ── Service layer ──────────────────────────────────────────────────────
+
+    def test_build_input_form_spec_skips_target(self):
+        from .services.predict import build_input_form_spec
+        df = pd.DataFrame({"a": [1.0, 2.0], "b": ["x", "y"], "target": [0, 1]})
+        columns_meta = [
+            {"name": "a", "dtype": "float"},
+            {"name": "b", "dtype": "string"},
+            {"name": "target", "dtype": "integer"},
+        ]
+        specs = build_input_form_spec(df, columns_meta, {"target"})
+        names = [s["name"] for s in specs]
+        self.assertIn("a", names)
+        self.assertIn("b", names)
+        self.assertNotIn("target", names)
+
+    def test_build_input_form_spec_numeric_default_is_median(self):
+        from .services.predict import build_input_form_spec
+        df = pd.DataFrame({"a": [1.0, 2.0, 3.0], "target": [0, 1, 0]})
+        cols = [{"name": "a", "dtype": "float"}, {"name": "target", "dtype": "integer"}]
+        specs = build_input_form_spec(df, cols, {"target"})
+        self.assertEqual(specs[0]["default"], 2.0)
+        self.assertEqual(specs[0]["input_type"], "number")
+
+    def test_build_input_form_spec_categorical_has_choices(self):
+        from .services.predict import build_input_form_spec
+        df = pd.DataFrame({"a": ["x", "y", "x", "z"], "target": [0, 1, 0, 1]})
+        cols = [{"name": "a", "dtype": "string"}, {"name": "target", "dtype": "integer"}]
+        specs = build_input_form_spec(df, cols, {"target"})
+        self.assertEqual(specs[0]["input_type"], "select")
+        self.assertEqual(set(specs[0]["choices"]), {"x", "y", "z"})
+        self.assertEqual(specs[0]["default"], "x")  # mode
+
+    # ── View ───────────────────────────────────────────────────────────────
+
+    def test_predict_get_returns_200(self):
+        m = self._setup_classification()
+        response = self.client.get(f"/project1/models/{m.pk}/predict/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_predict_form_renders_feature_inputs(self):
+        m = self._setup_classification()
+        response = self.client.get(f"/project1/models/{m.pk}/predict/")
+        self.assertContains(response, 'name="f__a"')
+        self.assertContains(response, 'name="f__b"')
+        self.assertNotContains(response, 'name="f__target"')
+
+    def test_predict_classification_returns_predicted_class(self):
+        m = self._setup_classification()
+        response = self.client.post(f"/project1/models/{m.pk}/predict/", {
+            "action": "predict",
+            "f__a": "5.0",
+            "f__b": "5.0",
+        })
+        self.assertEqual(response.status_code, 200)
+        # Should show one of the two trained class names
+        content = response.content.decode()
+        self.assertTrue("cat" in content or "dog" in content)
+        # And the probability chart payload
+        self.assertContains(response, "proba-data")
+
+    def test_predict_regression_returns_numeric_value(self):
+        m = self._setup_regression()
+        response = self.client.post(f"/project1/models/{m.pk}/predict/", {
+            "action": "predict",
+            "f__x": "10.0",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Predicted")
+
+    def test_predict_invalid_number_rejected(self):
+        m = self._setup_classification()
+        response = self.client.post(f"/project1/models/{m.pk}/predict/", {
+            "action": "predict",
+            "f__a": "not_a_number",
+            "f__b": "5.0",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "must be a number")
+
+    def test_predict_missing_value_rejected(self):
+        m = self._setup_classification()
+        response = self.client.post(f"/project1/models/{m.pk}/predict/", {
+            "action": "predict",
+            "f__a": "",
+            "f__b": "5.0",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "value required")
+
+    def test_random_sample_action_pre_fills_form(self):
+        m = self._setup_classification()
+        response = self.client.post(f"/project1/models/{m.pk}/predict/", {
+            "action": "sample",
+        })
+        self.assertEqual(response.status_code, 200)
+        # Form should still render
+        self.assertContains(response, 'name="f__a"')
+
+    def test_predict_button_appears_on_model_detail(self):
+        m = self._setup_classification()
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "Predict on new data")
+
+
 # ── Stage 6c: model delete + cleanup signal ────────────────────────────────
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())

@@ -14,6 +14,7 @@ from .services.data import (
 from .services.preprocess import prepare_experiment
 from .services.train import train_and_score, HYPERPARAM_SPECS
 from .services.evaluate import build_evaluation
+from .services.predict import build_input_form_spec, pick_random_row_values, predict_single
 
 ROWS_PER_PAGE = 25
 
@@ -479,6 +480,102 @@ def model_detail(request, pk):
         "experiment": model.experiment,
         "dataset": model.experiment.dataset,
         "metric_rows": metric_rows,
+    })
+
+
+def model_predict(request, pk):
+    import joblib
+    model = get_object_or_404(TrainedModel, pk=pk)
+    experiment = model.experiment
+    dataset = experiment.dataset
+
+    if not model.is_trained:
+        messages.error(request, "Model must be trained successfully before predicting.")
+        return redirect("project1:model_detail", pk=pk)
+
+    try:
+        df = read_csv_safely(dataset.file)
+    except Exception as e:
+        messages.error(request, f"Could not read dataset: {e}")
+        return redirect("project1:model_detail", pk=pk)
+
+    excluded = set(experiment.excluded_columns or [])
+    if dataset.target_name:
+        excluded.add(dataset.target_name)
+    specs = build_input_form_spec(df, dataset.columns or [], excluded)
+
+    current_values: dict = {s["name"]: s["default"] for s in specs}
+    pred_errors: list = []
+    pred_label = None
+    pred_probs_list = None
+
+    if request.method == "POST":
+        action = request.POST.get("action", "predict")
+
+        if action == "sample":
+            current_values = pick_random_row_values(df, specs)
+        else:
+            # Parse + validate user input
+            row: dict = {}
+            for spec in specs:
+                raw = (request.POST.get(f"f__{spec['name']}") or "").strip()
+                if raw == "":
+                    pred_errors.append(f"{spec['name']}: value required")
+                    continue
+                if spec["input_type"] == "number":
+                    try:
+                        row[spec["name"]] = float(raw)
+                    except ValueError:
+                        pred_errors.append(f"{spec['name']}: must be a number")
+                        continue
+                else:
+                    row[spec["name"]] = raw
+                current_values[spec["name"]] = raw
+
+            if not pred_errors:
+                try:
+                    with model.model_file.open("rb") as f:
+                        pipeline = joblib.load(f)
+                    feature_order = [s["name"] for s in specs]
+                    result = predict_single(pipeline, row, feature_order)
+
+                    if dataset.problem_type == "classification":
+                        labels = (model.evaluation or {}).get("labels", [])
+                        try:
+                            pred_int = int(result["prediction"])
+                            pred_label = labels[pred_int] if 0 <= pred_int < len(labels) else str(result["prediction"])
+                        except (TypeError, ValueError):
+                            pred_label = str(result["prediction"])
+
+                        if result["probabilities"] is not None:
+                            pred_probs_list = [
+                                {"label": labels[i] if i < len(labels) else str(i),
+                                 "prob": float(p)}
+                                for i, p in enumerate(result["probabilities"])
+                            ]
+                    else:
+                        pred_label = f"{float(result['prediction']):.4f}"
+                except Exception as e:
+                    pred_errors.append(f"Prediction failed: {e}")
+
+    # Attach the current value to each spec for easy template rendering
+    for spec in specs:
+        spec["current"] = current_values.get(spec["name"], spec["default"])
+
+    test_rmse = None
+    if dataset.problem_type == "regression":
+        test_rmse = (model.evaluation or {}).get("test", {}).get("rmse")
+
+    return render(request, "project1/model_predict.html", {
+        "model": model,
+        "experiment": experiment,
+        "dataset": dataset,
+        "specs": specs,
+        "pred_label": pred_label,
+        "pred_probs_list": pred_probs_list,
+        "pred_errors": pred_errors,
+        "is_classification": dataset.problem_type == "classification",
+        "test_rmse": test_rmse,
     })
 
 

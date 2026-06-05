@@ -413,6 +413,47 @@
     text-decoration: underline;
 }
 
+/* ── Single-row prediction ── */
+.p1-pred-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+}
+
+.p1-pred-grid input[type="number"],
+.p1-pred-grid select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.p1-pred-result {
+    text-align: center;
+    padding: 28px 20px;
+    background: linear-gradient(180deg, #e7f3ff 0%, #f4f7fc 100%);
+    border: 2px solid #275CB2;
+    border-radius: 6px;
+    margin: 12px 0 20px;
+}
+
+.p1-pred-value {
+    font-size: 36px;
+    font-weight: 700;
+    color: #275CB2;
+    margin-bottom: 6px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    word-break: break-all;
+}
+
+.p1-pred-subtitle {
+    font-size: 14px;
+    color: #555;
+}
+
 /* ── Hyperparameter form rows ── */
 .p1-hp-section {
     padding: 12px 14px;

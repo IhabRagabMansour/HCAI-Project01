@@ -193,6 +193,11 @@
     <a href="{% url 'project1:experiment_detail' experiment.pk %}">
         <button type="button">Back to experiment</button>
     </a>
+    {% if model.is_trained %}
+    <a href="{% url 'project1:model_predict' model.pk %}">
+        <button type="button" class="btn-success">🔮 Predict on new data</button>
+    </a>
+    {% endif %}
     <a href="{% url 'project1:model_delete' model.pk %}">
         <button type="button" class="btn-danger">Delete</button>
     </a>
