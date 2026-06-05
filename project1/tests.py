@@ -1184,6 +1184,104 @@ class TrainedModelRegressionFlowTest(TestCase):
         self.assertNotContains(response, "Accuracy")
 
 
+# ── Stage 18: re-evaluate, download, spinner ───────────────────────────────
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ModelReevaluateAndDownloadTest(TestCase):
+    def setUp(self):
+        rows = []
+        for i in range(15):
+            rows.append(f"{i*0.1},{i*0.2},0")
+        for i in range(15):
+            rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("rdl.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        from .models import Dataset, Experiment, TrainedModel
+        self.dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{self.dataset.pk}/experiments/new/", {
+            "name": "ExpRDL",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        self.experiment = Experiment.objects.first()
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "RDLModel",
+            "algorithm": "logreg",
+            "metric": "accuracy",
+            "cv_folds": "0",
+        })
+        self.model = TrainedModel.objects.first()
+
+    # ── Re-evaluate ────────────────────────────────────────────────────────
+
+    def test_reevaluate_post_recomputes_evaluation(self):
+        # Wipe the existing evaluation, then re-evaluate
+        from .models import TrainedModel
+        self.model.evaluation = None
+        self.model.eval_error = "stale"
+        self.model.save()
+        self.client.post(f"/project1/models/{self.model.pk}/reevaluate/")
+        m = TrainedModel.objects.get(pk=self.model.pk)
+        self.assertIsNotNone(m.evaluation)
+        self.assertIsNone(m.eval_error)
+
+    def test_reevaluate_redirects_to_model_detail(self):
+        response = self.client.post(f"/project1/models/{self.model.pk}/reevaluate/")
+        self.assertRedirects(response, f"/project1/models/{self.model.pk}/")
+
+    def test_reevaluate_button_appears_on_model_detail(self):
+        response = self.client.get(f"/project1/models/{self.model.pk}/")
+        self.assertContains(response, "Re-evaluate")
+        # And inside a POST form
+        self.assertContains(response, f'action="/project1/models/{self.model.pk}/reevaluate/"')
+
+    def test_reevaluate_get_just_redirects_without_change(self):
+        # GET shouldn't perform the action
+        response = self.client.get(f"/project1/models/{self.model.pk}/reevaluate/")
+        self.assertRedirects(response, f"/project1/models/{self.model.pk}/")
+
+    # ── Download ───────────────────────────────────────────────────────────
+
+    def test_download_returns_joblib_attachment(self):
+        response = self.client.get(f"/project1/models/{self.model.pk}/download/")
+        self.assertEqual(response.status_code, 200)
+        cd = response["Content-Disposition"]
+        self.assertIn("attachment", cd)
+        self.assertIn(".joblib", cd)
+
+    def test_download_filename_uses_model_name(self):
+        response = self.client.get(f"/project1/models/{self.model.pk}/download/")
+        # Spaces and unsafe chars should be replaced with underscores
+        self.assertIn("RDLModel.joblib", response["Content-Disposition"])
+
+    def test_download_button_appears_on_model_detail(self):
+        response = self.client.get(f"/project1/models/{self.model.pk}/")
+        self.assertContains(response, "Download .joblib")
+        self.assertContains(response, f'href="/project1/models/{self.model.pk}/download/"')
+
+    # ── Spinner ────────────────────────────────────────────────────────────
+
+    def test_train_form_has_loading_label(self):
+        response = self.client.get(f"/project1/experiments/{self.experiment.pk}/models/new/")
+        self.assertContains(response, 'data-loading-label="Training…"')
+
+    def test_experiment_form_has_loading_label(self):
+        response = self.client.get(f"/project1/datasets/{self.dataset.pk}/experiments/new/")
+        self.assertContains(response, 'data-loading-label="Preparing…"')
+
+    def test_reevaluate_form_has_loading_label(self):
+        response = self.client.get(f"/project1/models/{self.model.pk}/")
+        self.assertContains(response, 'data-loading-label="Re-evaluating…"')
+
+    def test_form_spinner_script_loaded(self):
+        response = self.client.get(f"/project1/models/{self.model.pk}/")
+        self.assertContains(response, "form_spinner.js")
+
+
 # ── Stage 14: cross-experiment comparison ──────────────────────────────────
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())

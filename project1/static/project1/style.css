@@ -413,6 +413,23 @@
     text-decoration: underline;
 }
 
+/* ── Submit-time loading spinner ── */
+.p1-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: p1-spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+}
+
+@keyframes p1-spin {
+    to { transform: rotate(360deg); }
+}
+
 /* ── Cross-experiment compare: model selection ── */
 .p1-cmp-group {
     border: 1px solid #ddd;

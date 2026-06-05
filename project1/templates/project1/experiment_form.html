@@ -16,7 +16,7 @@
     </table>
 </div>
 
-<form method="post" class="p1-form p1-exp-form">
+<form method="post" class="p1-form p1-exp-form" data-loading-label="Preparing…">
     {% csrf_token %}
 
     <div class="p1-section">
@@ -124,5 +124,7 @@
         <button type="submit">Prepare Data</button>
     </div>
 </form>
+
+<script src="{% static 'project1/form_spinner.js' %}"></script>
 
 {% endblock %}

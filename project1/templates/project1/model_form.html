@@ -17,7 +17,7 @@
     </table>
 </div>
 
-<form method="post" class="p1-form p1-exp-form">
+<form method="post" class="p1-form p1-exp-form" data-loading-label="Training…">
     {% csrf_token %}
 
     <div class="p1-section">
@@ -142,5 +142,6 @@
 </form>
 
 <script src="{% static 'project1/hp_toggle.js' %}"></script>
+<script src="{% static 'project1/form_spinner.js' %}"></script>
 
 {% endblock %}

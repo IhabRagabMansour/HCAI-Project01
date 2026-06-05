@@ -212,10 +212,20 @@
     <a href="{% url 'project1:model_predict' model.pk %}">
         <button type="button" class="btn-success">🔮 Predict on new data</button>
     </a>
+    <a href="{% url 'project1:model_download' model.pk %}">
+        <button type="button">⬇️ Download .joblib</button>
+    </a>
+    <form method="post" action="{% url 'project1:model_reevaluate' model.pk %}"
+          style="display:inline;" data-loading-label="Re-evaluating…">
+        {% csrf_token %}
+        <button type="submit">↻ Re-evaluate</button>
+    </form>
     {% endif %}
     <a href="{% url 'project1:model_delete' model.pk %}">
         <button type="button" class="btn-danger">Delete</button>
     </a>
 </div>
+
+<script src="{% static 'project1/form_spinner.js' %}"></script>
 
 {% endblock %}

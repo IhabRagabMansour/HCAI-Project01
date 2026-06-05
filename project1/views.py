@@ -612,6 +612,62 @@ def model_predict(request, pk):
     })
 
 
+def model_reevaluate(request, pk):
+    """Recompute evaluation from the saved pipeline without retraining."""
+    import joblib
+    model = get_object_or_404(TrainedModel, pk=pk)
+    if request.method != "POST":
+        return redirect("project1:model_detail", pk=pk)
+
+    if not model.model_file:
+        messages.error(request, "Model has no saved file to re-evaluate.")
+        return redirect("project1:model_detail", pk=pk)
+
+    try:
+        with model.model_file.open("rb") as f:
+            pipeline = joblib.load(f)
+        df = read_csv_safely(model.experiment.dataset.file)
+        prepared = prepare_experiment(
+            df,
+            model.experiment.dataset.target_name,
+            model.experiment.dataset.problem_type,
+            model.experiment.as_config(),
+        )
+        model.evaluation = build_evaluation(
+            pipeline,
+            prepared,
+            model.experiment.dataset.problem_type,
+            prepared.label_map,
+            prepared.feature_names,
+        )
+        model.eval_error = None
+        model.save()
+        messages.success(request, f"Evaluation recomputed for '{model.name}'.")
+    except Exception as e:
+        model.eval_error = str(e)
+        model.save()
+        messages.error(request, f"Re-evaluation failed: {e}")
+
+    return redirect("project1:model_detail", pk=pk)
+
+
+def model_download(request, pk):
+    """Serve the saved joblib pipeline as a downloadable file."""
+    from django.http import FileResponse
+    model = get_object_or_404(TrainedModel, pk=pk)
+    if not model.model_file:
+        messages.error(request, "No model file to download.")
+        return redirect("project1:model_detail", pk=pk)
+
+    safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in model.name)
+    filename = f"{safe_name or 'model'}.joblib"
+    return FileResponse(
+        model.model_file.open("rb"),
+        as_attachment=True,
+        filename=filename,
+    )
+
+
 def model_delete(request, pk):
     model = get_object_or_404(TrainedModel, pk=pk)
     if request.method == "POST":
