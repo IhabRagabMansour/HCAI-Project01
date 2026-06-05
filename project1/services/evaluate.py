@@ -176,6 +176,74 @@ def compute_feature_importance(estimator_or_pipeline, feature_names: list[str]) 
     return items
 
 
+# ── Cross-validation ───────────────────────────────────────────────────────
+
+def cross_validate_pipeline(
+    prepared: PreparedData,
+    algorithm: str,
+    problem_type: str,
+    cv_folds: int = 5,
+    random_seed: int = 42,
+    hyperparameters: dict | None = None,
+) -> dict:
+    """Run k-fold CV on the training set, returning per-metric stats.
+
+    Uses StratifiedKFold for classification (with a graceful fall-back to
+    plain KFold when a class is too rare), KFold for regression.
+
+    Returns a dict of metric_key → {"mean": float, "std": float, "scores": [...]},
+    or {"error": str} when CV failed for that metric.
+    """
+    from sklearn.model_selection import KFold, StratifiedKFold, cross_val_score
+
+    from .pipeline import build_full_pipeline
+    from .train import build_estimator
+
+    estimator = build_estimator(algorithm, random_seed, hyperparameters=hyperparameters)
+    pipeline = build_full_pipeline(prepared.preprocessing, estimator)
+
+    if problem_type == "classification":
+        # Stratify needs every class to have at least cv_folds samples
+        _, counts = np.unique(prepared.y_train, return_counts=True)
+        if len(counts) and counts.min() >= cv_folds:
+            cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=random_seed)
+        else:
+            cv = KFold(n_splits=cv_folds, shuffle=True, random_state=random_seed)
+        metric_scoring = {
+            "accuracy":  "accuracy",
+            "f1":        "f1_weighted",
+            "precision": "precision_weighted",
+            "recall":    "recall_weighted",
+        }
+    else:
+        cv = KFold(n_splits=cv_folds, shuffle=True, random_state=random_seed)
+        metric_scoring = {
+            "r2":   "r2",
+            "rmse": "neg_root_mean_squared_error",
+            "mae":  "neg_mean_absolute_error",
+        }
+
+    results: dict = {}
+    for metric_key, scoring in metric_scoring.items():
+        try:
+            scores = cross_val_score(
+                pipeline, prepared.X_train, prepared.y_train,
+                cv=cv, scoring=scoring, n_jobs=1,
+            )
+            # neg_* scoring returns negative numbers (sklearn convention); invert
+            if scoring.startswith("neg_"):
+                scores = -scores
+            results[metric_key] = {
+                "mean":   float(np.mean(scores)),
+                "std":    float(np.std(scores)),
+                "scores": [float(s) for s in scores],
+            }
+        except Exception as e:
+            results[metric_key] = {"error": str(e)}
+
+    return results
+
+
 # ── Orchestrator ───────────────────────────────────────────────────────────
 
 def build_evaluation(

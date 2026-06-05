@@ -54,6 +54,21 @@
         </div>
 
         <div class="p1-form-group">
+            <label class="p1-label" for="{{ form.cv_folds.id_for_label }}">Cross-validation folds</label>
+            {{ form.cv_folds }}
+            {% if form.cv_folds.errors %}
+                <ul class="p1-field-errors">
+                    {% for e in form.cv_folds.errors %}<li>{{ e }}</li>{% endfor %}
+                </ul>
+            {% endif %}
+            <p class="p1-hint">
+                Number of folds for k-fold cross-validation on the training set.
+                <strong>0</strong> skips CV (faster). <strong>5</strong> is a common default; range 2–10.
+                More folds = more reliable scores but slower training.
+            </p>
+        </div>
+
+        <div class="p1-form-group">
             <label class="p1-label" for="{{ form.metric.id_for_label }}">Metric</label>
             {{ form.metric }}
             {% if dataset.problem_type == "classification" %}

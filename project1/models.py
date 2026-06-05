@@ -195,6 +195,9 @@ class TrainedModel(models.Model):
 
     hyperparameters = models.JSONField(default=dict, blank=True)
 
+    cv_folds = models.PositiveIntegerField(default=5)
+    cv_scores = models.JSONField(null=True, blank=True)
+
     class Meta:
         ordering = ["-created_at"]
 

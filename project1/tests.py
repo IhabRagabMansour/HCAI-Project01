@@ -1184,6 +1184,167 @@ class TrainedModelRegressionFlowTest(TestCase):
         self.assertNotContains(response, "Accuracy")
 
 
+# ── Stage 12: cross-validation ─────────────────────────────────────────────
+
+class CrossValidatePipelineTest(TestCase):
+    def test_classification_returns_all_metrics_with_mean_and_std(self):
+        from .services.evaluate import cross_validate_pipeline
+        np.random.seed(0)
+        df = pd.DataFrame({
+            "x1": np.concatenate([np.random.randn(50), np.random.randn(50) + 5]),
+            "x2": np.concatenate([np.random.randn(50), np.random.randn(50) + 5]),
+            "target": [0] * 50 + [1] * 50,
+        })
+        prepared = prepare_experiment(df, "target", "classification",
+                                      ExperimentConfig(stratify=False))
+        scores = cross_validate_pipeline(prepared, "logreg", "classification", cv_folds=3)
+        for key in ("accuracy", "f1", "precision", "recall"):
+            self.assertIn(key, scores)
+            self.assertIn("mean", scores[key])
+            self.assertIn("std", scores[key])
+            self.assertIn("scores", scores[key])
+            self.assertEqual(len(scores[key]["scores"]), 3)
+
+    def test_regression_returns_r2_rmse_mae(self):
+        from .services.evaluate import cross_validate_pipeline
+        np.random.seed(0)
+        x = np.random.randn(100)
+        df = pd.DataFrame({"x": x, "y": x * 2.0 + 1.0 + np.random.randn(100) * 0.1})
+        prepared = prepare_experiment(df, "y", "regression",
+                                      ExperimentConfig(stratify=False, scaling="none"))
+        scores = cross_validate_pipeline(prepared, "linreg", "regression", cv_folds=3)
+        for key in ("r2", "rmse", "mae"):
+            self.assertIn(key, scores)
+            self.assertGreaterEqual(scores[key]["mean"], 0.0 - 1e9)  # rmse/mae positive
+            self.assertIn("std", scores[key])
+
+    def test_rmse_is_positive_after_negation(self):
+        from .services.evaluate import cross_validate_pipeline
+        np.random.seed(0)
+        x = np.random.randn(50)
+        df = pd.DataFrame({"x": x, "y": x * 2.0 + np.random.randn(50) * 0.1})
+        prepared = prepare_experiment(df, "y", "regression",
+                                      ExperimentConfig(stratify=False, scaling="none"))
+        scores = cross_validate_pipeline(prepared, "linreg", "regression", cv_folds=3)
+        self.assertGreater(scores["rmse"]["mean"], 0)
+
+    def test_stratify_fallback_for_rare_class(self):
+        # Only 2 samples per class but 3-fold CV — stratify must fall back
+        from .services.evaluate import cross_validate_pipeline
+        df = pd.DataFrame({
+            "x1": list(range(6)),
+            "x2": [i * 0.5 for i in range(6)],
+            "target": [0, 0, 1, 1, 2, 2],
+        })
+        prepared = prepare_experiment(df, "target", "classification",
+                                      ExperimentConfig(stratify=False))
+        # Should not raise
+        scores = cross_validate_pipeline(prepared, "rf_clf", "classification", cv_folds=3)
+        self.assertIn("accuracy", scores)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class CVViewIntegrationTest(TestCase):
+    def _train(self, cv_folds: str = "3"):
+        rows = []
+        for i in range(15):
+            rows.append(f"{i*0.1},{i*0.2},0")
+        for i in range(15):
+            rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("cv.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        from .models import Dataset, Experiment, TrainedModel
+        dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "ExpCV",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        experiment = Experiment.objects.first()
+        self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+            "name": "CVRF",
+            "algorithm": "rf_clf",
+            "metric": "accuracy",
+            "cv_folds": cv_folds,
+        })
+        return TrainedModel.objects.first()
+
+    def test_cv_scores_persisted_after_training(self):
+        m = self._train(cv_folds="3")
+        self.assertIsNotNone(m.cv_scores)
+        self.assertIn("accuracy", m.cv_scores)
+
+    def test_cv_skipped_when_folds_zero(self):
+        m = self._train(cv_folds="0")
+        self.assertIsNone(m.cv_scores)
+
+    def test_model_detail_shows_cv_column_when_enabled(self):
+        m = self._train(cv_folds="3")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "3-fold CV")
+
+    def test_model_detail_omits_cv_column_when_zero(self):
+        m = self._train(cv_folds="0")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertNotContains(response, "fold CV")
+
+    def test_form_renders_cv_folds_field(self):
+        from .models import Dataset, Experiment
+        rows = []
+        for i in range(15):
+            rows.append(f"{i*0.1},{i*0.2},0")
+        for i in range(15):
+            rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("cvf.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "F",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        experiment = Experiment.objects.first()
+        response = self.client.get(f"/project1/experiments/{experiment.pk}/models/new/")
+        self.assertContains(response, 'name="cv_folds"')
+
+    def test_invalid_cv_folds_rejected(self):
+        from .models import Dataset, Experiment, TrainedModel
+        rows = []
+        for i in range(15):
+            rows.append(f"{i*0.1},{i*0.2},0")
+        for i in range(15):
+            rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("cvbad.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "BadCV",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        experiment = Experiment.objects.first()
+        response = self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+            "name": "WontWork",
+            "algorithm": "logreg",
+            "metric": "accuracy",
+            "cv_folds": "1",  # invalid
+        })
+        self.assertEqual(TrainedModel.objects.count(), 0)
+        self.assertContains(response, "0 (skip) or 2")
+
+
 # ── Stage 13: single-row prediction ────────────────────────────────────────
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())

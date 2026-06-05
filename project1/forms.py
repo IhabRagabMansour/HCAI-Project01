@@ -91,9 +91,10 @@ class ExperimentForm(forms.ModelForm):
 class TrainedModelForm(forms.ModelForm):
     class Meta:
         model = TrainedModel
-        fields = ["name", "algorithm", "metric"]
+        fields = ["name", "algorithm", "metric", "cv_folds"]
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "Leave blank to auto-name"}),
+            "cv_folds": forms.NumberInput(attrs={"min": "0", "max": "10", "step": "1"}),
         }
 
     def __init__(self, *args, problem_type=None, **kwargs):
@@ -104,3 +105,15 @@ class TrainedModelForm(forms.ModelForm):
         elif problem_type == "regression":
             self.fields["algorithm"].choices = TrainedModel.REGRESSION_ALGOS
             self.fields["metric"].choices    = TrainedModel.REGRESSION_METRICS
+
+        # cv_folds is optional in the form — falls back to 5 if blank
+        self.fields["cv_folds"].required = False
+        self.fields["cv_folds"].initial = 5
+
+    def clean_cv_folds(self):
+        v = self.cleaned_data.get("cv_folds")
+        if v is None:
+            return 5
+        if v == 1 or v > 10:
+            raise forms.ValidationError("CV folds must be 0 (skip) or 2–10.")
+        return v

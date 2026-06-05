@@ -51,7 +51,12 @@
     <h2 class="p1-section-title">Metrics</h2>
     <table class="p1-detail-table">
         <thead>
-            <tr><th>Metric</th><th>Train</th><th>Test</th></tr>
+            <tr>
+                <th>Metric</th>
+                <th>Train</th>
+                <th>Test</th>
+                {% if model.cv_folds >= 2 %}<th>{{ model.cv_folds }}-fold CV (mean ± std)</th>{% endif %}
+            </tr>
         </thead>
         <tbody>
             {% for row in metric_rows %}
@@ -68,10 +73,20 @@
                 <td{% if row.is_trained_metric %} class="p1-cell-trained"{% endif %}>
                     {{ row.test|floatformat:4 }}
                 </td>
+                {% if model.cv_folds >= 2 %}
+                <td{% if row.is_trained_metric %} class="p1-cell-trained"{% endif %}>
+                    {% if row.cv %}{{ row.cv }}{% else %}—{% endif %}
+                </td>
+                {% endif %}
             </tr>
             {% endfor %}
         </tbody>
     </table>
+    {% if cv_error_msg %}
+    <div class="p1-msg p1-msg--warning" style="margin-top:12px;">
+        <strong>Cross-validation failed:</strong> {{ cv_error_msg }}
+    </div>
+    {% endif %}
 </div>
 
 {% if model.evaluation.problem_type == "classification" %}

@@ -13,7 +13,7 @@ from .services.data import (
 )
 from .services.preprocess import prepare_experiment
 from .services.train import train_and_score, HYPERPARAM_SPECS
-from .services.evaluate import build_evaluation
+from .services.evaluate import build_evaluation, cross_validate_pipeline
 from .services.predict import build_input_form_spec, pick_random_row_values, predict_single
 
 ROWS_PER_PAGE = 25
@@ -417,6 +417,20 @@ def model_create(request, experiment_pk):
                 except Exception as e:
                     model.eval_error = str(e)
 
+                # Cross-validation (optional; cv_folds=0 skips)
+                if model.cv_folds >= 2:
+                    try:
+                        model.cv_scores = cross_validate_pipeline(
+                            prepared,
+                            model.algorithm,
+                            experiment.dataset.problem_type,
+                            cv_folds=model.cv_folds,
+                            random_seed=experiment.random_seed,
+                            hyperparameters=hp_dict,
+                        )
+                    except Exception as e:
+                        model.cv_scores = {"_error": str(e)}
+
             model.save()
             messages.success(request, f"'{model.name}' trained.")
             return redirect("project1:model_detail", pk=model.pk)
@@ -466,20 +480,31 @@ def model_detail(request, pk):
                 ("rmse", "RMSE"),
                 ("mae",  "MAE"),
             ]
+        cv = model.cv_scores if isinstance(model.cv_scores, dict) else {}
         for key, display in metric_specs:
+            cv_entry = cv.get(key)
+            cv_display = None
+            if isinstance(cv_entry, dict) and "mean" in cv_entry:
+                cv_display = f"{cv_entry['mean']:.4f} ± {cv_entry['std']:.4f}"
             metric_rows.append({
                 "key": key,
                 "display": display,
                 "train": ev.get("train", {}).get(key),
                 "test": ev.get("test", {}).get(key),
+                "cv": cv_display,
                 "is_trained_metric": (key == model.metric),
             })
+
+    cv_error_msg = None
+    if isinstance(model.cv_scores, dict):
+        cv_error_msg = model.cv_scores.get("_error")
 
     return render(request, "project1/model_detail.html", {
         "model": model,
         "experiment": model.experiment,
         "dataset": model.experiment.dataset,
         "metric_rows": metric_rows,
+        "cv_error_msg": cv_error_msg,
     })
 
 
