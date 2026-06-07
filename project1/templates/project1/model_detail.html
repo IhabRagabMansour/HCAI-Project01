@@ -89,6 +89,23 @@
     {% endif %}
 </div>
 
+{% if model.evaluation.learning_curve %}
+<div class="p1-section">
+    <h2 class="p1-section-title">Learning curve</h2>
+    <div class="p1-chart-wrap">
+        <canvas id="lc-chart"></canvas>
+    </div>
+    <p class="p1-hint" style="text-align:center;">
+        Train and validation scores as the training set grows.
+        <strong>Converging lines</strong> = balanced model.
+        <strong>Train >> Val</strong> = overfitting.
+        <strong>Both low</strong> = underfitting.
+    </p>
+    {{ model.evaluation.learning_curve|json_script:"learning-curve-data" }}
+    <script src="{% static 'project1/learning_curve_chart.js' %}"></script>
+</div>
+{% endif %}
+
 {% if model.evaluation.problem_type == "classification" %}
 <div class="p1-section">
     <h2 class="p1-section-title">Confusion matrix (test set)</h2>

@@ -220,6 +220,96 @@ def compute_permutation_importance(
     return items
 
 
+# ── Learning curve ─────────────────────────────────────────────────────────
+
+_LC_SCORING = {
+    "accuracy":  "accuracy",
+    "f1":        "f1_weighted",
+    "precision": "precision_weighted",
+    "recall":    "recall_weighted",
+    "r2":        "r2",
+    "rmse":      "neg_root_mean_squared_error",
+    "mae":       "neg_mean_absolute_error",
+}
+_LC_LABELS = {
+    "accuracy":  "Accuracy",
+    "f1":        "F1 (weighted)",
+    "precision": "Precision (weighted)",
+    "recall":    "Recall (weighted)",
+    "r2":        "R²",
+    "rmse":      "RMSE",
+    "mae":       "MAE",
+}
+
+
+def compute_learning_curve(
+    prepared: PreparedData,
+    algorithm: str,
+    problem_type: str,
+    cv_folds: int,
+    metric: str,
+    random_seed: int = 42,
+    hyperparameters: dict | None = None,
+) -> dict | None:
+    """Compute a learning curve: train + validation score as a function of
+    training set size. Returns a JSON-ready dict (mean ± std per size for
+    both lines) or None on failure.
+    """
+    from sklearn.model_selection import KFold, StratifiedKFold, learning_curve
+
+    from .pipeline import build_full_pipeline, build_sampler
+    from .train import build_estimator
+
+    estimator = build_estimator(algorithm, random_seed, hyperparameters=hyperparameters)
+    oversampling = getattr(prepared, "oversampling", "none") or "none"
+    sampler = build_sampler(oversampling, random_seed)
+    pipeline = build_full_pipeline(prepared.preprocessing, estimator, sampler=sampler)
+
+    # Match the cross_validate_pipeline CV strategy (stratify when feasible)
+    if problem_type == "classification":
+        _, counts = np.unique(prepared.y_train, return_counts=True)
+        if len(counts) and counts.min() >= cv_folds:
+            cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=random_seed)
+        else:
+            cv = KFold(n_splits=cv_folds, shuffle=True, random_state=random_seed)
+    else:
+        cv = KFold(n_splits=cv_folds, shuffle=True, random_state=random_seed)
+
+    scoring = _LC_SCORING.get(metric, "accuracy" if problem_type == "classification" else "r2")
+    metric_label = _LC_LABELS.get(metric, metric)
+
+    train_sizes_frac = np.array([0.1, 0.3, 0.5, 0.7, 1.0])
+
+    try:
+        train_sizes, train_scores, val_scores = learning_curve(
+            pipeline, prepared.X_train, prepared.y_train,
+            cv=cv, scoring=scoring, train_sizes=train_sizes_frac,
+            n_jobs=1, random_state=random_seed, shuffle=False,
+        )
+    except Exception:
+        return None
+
+    if scoring.startswith("neg_"):
+        train_scores = -train_scores
+        val_scores = -val_scores
+
+    # Small datasets sometimes produce NaN scores in a fold; that breaks
+    # JSON serialization (and Django's JSON_VALID check). Bail out instead
+    # of persisting an invalid evaluation.
+    if (np.isnan(train_scores).any() or np.isnan(val_scores).any() or
+            np.isinf(train_scores).any() or np.isinf(val_scores).any()):
+        return None
+
+    return {
+        "train_sizes":  [int(s) for s in train_sizes],
+        "train_mean":   [float(m) for m in np.mean(train_scores, axis=1)],
+        "train_std":    [float(s) for s in np.std(train_scores, axis=1)],
+        "val_mean":     [float(m) for m in np.mean(val_scores, axis=1)],
+        "val_std":      [float(s) for s in np.std(val_scores, axis=1)],
+        "metric_label": metric_label,
+    }
+
+
 # ── Cross-validation ───────────────────────────────────────────────────────
 
 def cross_validate_pipeline(

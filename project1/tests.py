@@ -1184,6 +1184,127 @@ class TrainedModelRegressionFlowTest(TestCase):
         self.assertNotContains(response, "Accuracy")
 
 
+# ── Stage 16: learning curve ───────────────────────────────────────────────
+
+class ComputeLearningCurveTest(TestCase):
+    def _classification_prepared(self):
+        np.random.seed(0)
+        df = pd.DataFrame({
+            "x1": np.concatenate([np.random.randn(60), np.random.randn(60) + 5]),
+            "x2": np.concatenate([np.random.randn(60), np.random.randn(60) + 5]),
+            "target": [0] * 60 + [1] * 60,
+        })
+        return prepare_experiment(df, "target", "classification",
+                                  ExperimentConfig(stratify=False))
+
+    def _regression_prepared(self):
+        np.random.seed(0)
+        x = np.random.randn(120)
+        df = pd.DataFrame({"x": x, "y": x * 2.0 + 1.0 + np.random.randn(120) * 0.1})
+        return prepare_experiment(df, "y", "regression",
+                                  ExperimentConfig(stratify=False, scaling="none"))
+
+    def test_classification_returns_expected_keys(self):
+        from .services.evaluate import compute_learning_curve
+        prepared = self._classification_prepared()
+        result = compute_learning_curve(
+            prepared, "logreg", "classification", cv_folds=3, metric="accuracy",
+        )
+        for key in ("train_sizes", "train_mean", "train_std",
+                    "val_mean", "val_std", "metric_label"):
+            self.assertIn(key, result)
+        self.assertEqual(len(result["train_sizes"]), 5)  # 5 fractions
+        # Per-size arrays match in length
+        for k in ("train_mean", "train_std", "val_mean", "val_std"):
+            self.assertEqual(len(result[k]), 5)
+
+    def test_classification_metric_label_is_human_readable(self):
+        from .services.evaluate import compute_learning_curve
+        prepared = self._classification_prepared()
+        result = compute_learning_curve(
+            prepared, "rf_clf", "classification", cv_folds=3, metric="f1",
+        )
+        self.assertEqual(result["metric_label"], "F1 (weighted)")
+
+    def test_regression_metric_label(self):
+        from .services.evaluate import compute_learning_curve
+        prepared = self._regression_prepared()
+        result = compute_learning_curve(
+            prepared, "linreg", "regression", cv_folds=3, metric="rmse",
+        )
+        self.assertEqual(result["metric_label"], "RMSE")
+
+    def test_regression_rmse_is_positive_after_negation(self):
+        from .services.evaluate import compute_learning_curve
+        prepared = self._regression_prepared()
+        result = compute_learning_curve(
+            prepared, "linreg", "regression", cv_folds=3, metric="rmse",
+        )
+        for v in result["train_mean"] + result["val_mean"]:
+            self.assertGreater(v, 0)
+
+    def test_train_sizes_are_integers(self):
+        from .services.evaluate import compute_learning_curve
+        prepared = self._classification_prepared()
+        result = compute_learning_curve(
+            prepared, "logreg", "classification", cv_folds=3, metric="accuracy",
+        )
+        for s in result["train_sizes"]:
+            self.assertIsInstance(s, int)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class LearningCurveIntegrationTest(TestCase):
+    def _train(self, cv_folds: str):
+        rows = []
+        for i in range(30):
+            rows.append(f"{i*0.1},{i*0.2},0")
+        for i in range(30):
+            rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("lcint.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        from .models import Dataset, Experiment, TrainedModel
+        dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "ExpLC",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        experiment = Experiment.objects.first()
+        self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+            "name": "LCM",
+            "algorithm": "logreg",
+            "metric": "accuracy",
+            "cv_folds": cv_folds,
+        })
+        return TrainedModel.objects.first()
+
+    def test_learning_curve_persisted_when_cv_enabled(self):
+        m = self._train(cv_folds="3")
+        self.assertIn("learning_curve", m.evaluation)
+        self.assertEqual(len(m.evaluation["learning_curve"]["train_sizes"]), 5)
+
+    def test_learning_curve_skipped_when_cv_zero(self):
+        m = self._train(cv_folds="0")
+        self.assertNotIn("learning_curve", m.evaluation)
+
+    def test_model_detail_shows_chart_when_lc_present(self):
+        m = self._train(cv_folds="3")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "Learning curve")
+        self.assertContains(response, 'id="lc-chart"')
+        self.assertContains(response, "learning_curve_chart.js")
+
+    def test_model_detail_omits_chart_when_lc_absent(self):
+        m = self._train(cv_folds="0")
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertNotContains(response, 'id="lc-chart"')
+
+
 # ── Stage 15: permutation feature importance ───────────────────────────────
 
 class PermutationImportanceTest(TestCase):

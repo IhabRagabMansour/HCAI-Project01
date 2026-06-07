@@ -13,7 +13,7 @@ from .services.data import (
 )
 from .services.preprocess import prepare_experiment
 from .services.train import train_and_score, HYPERPARAM_SPECS
-from .services.evaluate import build_evaluation, cross_validate_pipeline
+from .services.evaluate import build_evaluation, cross_validate_pipeline, compute_learning_curve
 from .services.predict import build_input_form_spec, pick_random_row_values, predict_single
 
 ROWS_PER_PAGE = 25
@@ -438,6 +438,22 @@ def model_create(request, experiment_pk):
                         )
                     except Exception as e:
                         model.cv_scores = {"_error": str(e)}
+
+                    # Learning curve (also tied to cv_folds; same fold count)
+                    try:
+                        lc = compute_learning_curve(
+                            prepared,
+                            model.algorithm,
+                            experiment.dataset.problem_type,
+                            cv_folds=model.cv_folds,
+                            metric=model.metric,
+                            random_seed=experiment.random_seed,
+                            hyperparameters=hp_dict,
+                        )
+                        if lc and model.evaluation is not None:
+                            model.evaluation["learning_curve"] = lc
+                    except Exception:
+                        pass  # Learning curve is optional, don't block training
 
             model.save()
             messages.success(request, f"'{model.name}' trained.")
