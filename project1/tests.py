@@ -1184,6 +1184,144 @@ class TrainedModelRegressionFlowTest(TestCase):
         self.assertNotContains(response, "Accuracy")
 
 
+# ── Stage 19: outlier detection ────────────────────────────────────────────
+
+class RemoveOutliersTest(TestCase):
+    def setUp(self):
+        # 19 reasonable rows plus 1 obvious outlier
+        x_vals = [float(i) for i in range(1, 20)] + [10000.0]
+        y_vals = [float(i % 3) for i in range(20)]
+        self.X = pd.DataFrame({"x": x_vals, "cat": ["a", "b"] * 10})
+        self.y = pd.Series(y_vals)
+
+    def test_none_strategy_is_noop(self):
+        from .services.preprocess import remove_outliers
+        X_f, y_f, n = remove_outliers(self.X, self.y, "none")
+        self.assertEqual(n, 0)
+        self.assertEqual(len(X_f), len(self.X))
+
+    def test_iqr_drops_obvious_outlier(self):
+        from .services.preprocess import remove_outliers
+        X_f, y_f, n = remove_outliers(self.X, self.y, "iqr")
+        self.assertGreaterEqual(n, 1)
+        self.assertEqual(len(X_f), len(self.X) - n)
+        self.assertNotIn(10000.0, X_f["x"].values)
+
+    def test_zscore_drops_obvious_outlier(self):
+        from .services.preprocess import remove_outliers
+        X_f, y_f, n = remove_outliers(self.X, self.y, "zscore")
+        self.assertGreaterEqual(n, 1)
+        self.assertNotIn(10000.0, X_f["x"].values)
+
+    def test_y_kept_aligned_after_drop(self):
+        from .services.preprocess import remove_outliers
+        X_f, y_f, _ = remove_outliers(self.X, self.y, "iqr")
+        self.assertEqual(len(X_f), len(y_f))
+
+    def test_zero_variance_column_doesnt_crash(self):
+        from .services.preprocess import remove_outliers
+        X = pd.DataFrame({"const": [5.0] * 10, "x": list(range(10))})
+        y = pd.Series([0] * 10)
+        # Should not raise — div-by-zero on std is guarded
+        X_f, y_f, n = remove_outliers(X, y, "zscore")
+        self.assertEqual(n, 0)
+
+    def test_no_numeric_columns_is_noop(self):
+        from .services.preprocess import remove_outliers
+        X = pd.DataFrame({"cat": ["a"] * 5})
+        y = pd.Series([0] * 5)
+        X_f, y_f, n = remove_outliers(X, y, "iqr")
+        self.assertEqual(n, 0)
+
+    def test_unknown_strategy_raises(self):
+        from .services.preprocess import remove_outliers
+        with self.assertRaises(ValueError):
+            remove_outliers(self.X, self.y, "bogus")
+
+    def test_nan_rows_preserved(self):
+        from .services.preprocess import remove_outliers
+        X = pd.DataFrame({"x": [1.0, 2.0, float("nan"), 4.0, 5.0]})
+        y = pd.Series([0, 1, 0, 1, 0])
+        X_f, y_f, n = remove_outliers(X, y, "iqr")
+        # NaN row should still be present (handled by missing-value strategy elsewhere)
+        self.assertTrue(X_f["x"].isna().any())
+
+
+class PrepareExperimentOutlierTest(TestCase):
+    def test_outlier_strategy_flows_through(self):
+        df = pd.DataFrame({
+            "x1": list(range(20)) + [10000],   # one outlier
+            "x2": [i * 0.5 for i in range(21)],
+            "target": [0, 1] * 10 + [0],
+        })
+        config = ExperimentConfig(stratify=False, outlier_strategy="iqr")
+        result = prepare_experiment(df, "target", "classification", config)
+        self.assertGreaterEqual(result.n_outliers_removed, 1)
+
+    def test_outlier_strategy_none_keeps_all(self):
+        df = pd.DataFrame({
+            "x1": list(range(20)),
+            "target": [0, 1] * 10,
+        })
+        config = ExperimentConfig(stratify=False)  # default: none
+        result = prepare_experiment(df, "target", "classification", config)
+        self.assertEqual(result.n_outliers_removed, 0)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class OutlierViewIntegrationTest(TestCase):
+    def _upload(self):
+        # 20 normal points + 1 wild outlier
+        rows = [f"{i*0.1},{i*0.2},{i % 2}" for i in range(20)]
+        rows.append("10000,10000,1")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("out.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        from .models import Dataset
+        return Dataset.objects.first()
+
+    def test_experiment_form_renders_outlier_dropdown(self):
+        dataset = self._upload()
+        response = self.client.get(f"/project1/datasets/{dataset.pk}/experiments/new/")
+        self.assertContains(response, 'name="outlier_strategy"')
+        self.assertContains(response, "Tukey fences")
+
+    def test_experiment_persists_outlier_strategy(self):
+        dataset = self._upload()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "OutExp",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+            "stratify": "",
+            "outlier_strategy": "iqr",
+        })
+        from .models import Experiment
+        exp = Experiment.objects.first()
+        self.assertEqual(exp.outlier_strategy, "iqr")
+        self.assertGreaterEqual(exp.n_outliers_removed, 1)
+
+    def test_experiment_detail_shows_outliers_removed(self):
+        dataset = self._upload()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "ShowOut",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+            "stratify": "",
+            "outlier_strategy": "iqr",
+        })
+        from .models import Experiment
+        exp = Experiment.objects.first()
+        response = self.client.get(f"/project1/experiments/{exp.pk}/")
+        self.assertContains(response, "Outlier removal")
+        self.assertContains(response, "dropped")
+
+
 # ── Stage 17: probability threshold slider ─────────────────────────────────
 
 class TestProbaInEvaluationTest(TestCase):

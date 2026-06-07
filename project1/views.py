@@ -249,6 +249,7 @@ def experiment_create(request, dataset_pk):
                 experiment.n_features_after = result.n_features_after
                 experiment.feature_names = result.feature_names
                 experiment.stratify_used = result.stratify_used
+                experiment.n_outliers_removed = result.n_outliers_removed
                 experiment.prepare_error = None
             except Exception as e:
                 experiment.prepare_error = str(e)

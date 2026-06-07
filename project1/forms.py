@@ -74,6 +74,7 @@ class ExperimentForm(forms.ModelForm):
         fields = [
             "name", "missing_strategy", "categorical_encoding",
             "scaling", "test_size", "random_seed", "stratify", "oversampling",
+            "outlier_strategy",
         ]
         widgets = {
             "test_size": forms.NumberInput(attrs={"step": "0.05", "min": "0.10", "max": "0.50"}),
@@ -83,8 +84,9 @@ class ExperimentForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # oversampling is optional — falls back to model default "none" if blank
+        # oversampling + outlier_strategy are optional — fall back to "none" if blank
         self.fields["oversampling"].required = False
+        self.fields["outlier_strategy"].required = False
 
     def clean_test_size(self):
         v = self.cleaned_data["test_size"]
@@ -94,6 +96,10 @@ class ExperimentForm(forms.ModelForm):
 
     def clean_oversampling(self):
         v = self.cleaned_data.get("oversampling")
+        return v or "none"
+
+    def clean_outlier_strategy(self):
+        v = self.cleaned_data.get("outlier_strategy")
         return v or "none"
 
 

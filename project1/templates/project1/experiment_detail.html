@@ -123,6 +123,19 @@
             <td>{{ experiment.get_oversampling_display }}</td>
         </tr>
         {% endif %}
+        {% if experiment.outlier_strategy and experiment.outlier_strategy != "none" %}
+        <tr>
+            <th>Outlier removal</th>
+            <td>
+                {{ experiment.get_outlier_strategy_display }}
+                {% if experiment.n_outliers_removed %}
+                    — <strong>{{ experiment.n_outliers_removed }}</strong> row{{ experiment.n_outliers_removed|pluralize }} dropped
+                {% else %}
+                    — no outliers detected
+                {% endif %}
+            </td>
+        </tr>
+        {% endif %}
         <tr>
             <th>Created</th>
             <td>{{ experiment.created_at|date:"Y-m-d H:i" }}</td>

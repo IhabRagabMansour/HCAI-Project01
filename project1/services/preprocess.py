@@ -20,6 +20,7 @@ class ExperimentConfig:
     stratify: bool = True
     excluded_columns: list = None          # column names to drop before preprocessing
     oversampling: str = "none"             # none | smote | random_over
+    outlier_strategy: str = "none"         # none | iqr | zscore
 
     def __post_init__(self):
         if self.excluded_columns is None:
@@ -52,6 +53,7 @@ class PreparedData:
     n_test: int
     stratify_used: bool
     oversampling: str = "none"  # carried from config so train_and_score can build the sampler
+    n_outliers_removed: int = 0
 
 
 # ── Step 1: missing values ──────────────────────────────────────────────────
@@ -150,6 +152,58 @@ def scale_features(
     return scaler.fit_transform(X_train), scaler.transform(X_test)
 
 
+# ── Step 6: outlier removal ──────────────────────────────────────────────────
+
+def remove_outliers(X: pd.DataFrame, y: pd.Series, strategy: str):
+    """Drop rows whose numeric values fall outside a configurable range.
+
+    Returns (X_filtered, y_filtered, n_removed). NaN cells are kept (left to
+    the missing-value strategy). Zero-variance columns are skipped (no z-score
+    or IQR can be defined). Categorical columns are ignored.
+
+    Strategies:
+      - "none"   → no-op
+      - "iqr"    → Tukey fences: outside [Q1 − 1.5·IQR, Q3 + 1.5·IQR]
+      - "zscore" → |z| > 3 in any numeric column
+    """
+    if strategy == "none":
+        return X, y, 0
+
+    numeric_cols = [c for c in X.columns if pd.api.types.is_numeric_dtype(X[c])]
+    if not numeric_cols:
+        return X, y, 0
+
+    mask = pd.Series(True, index=X.index)
+
+    if strategy == "iqr":
+        for col in numeric_cols:
+            q1 = X[col].quantile(0.25)
+            q3 = X[col].quantile(0.75)
+            iqr = q3 - q1
+            if pd.isna(iqr) or iqr == 0:
+                continue
+            low, high = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+            col_mask = X[col].between(low, high) | X[col].isna()
+            mask &= col_mask
+
+    elif strategy == "zscore":
+        for col in numeric_cols:
+            std = X[col].std()
+            if pd.isna(std) or std == 0:
+                continue
+            z = (X[col] - X[col].mean()).abs() / std
+            col_mask = (z <= 3) | X[col].isna()
+            mask &= col_mask
+
+    else:
+        raise ValueError(f"Unknown outlier strategy: {strategy!r}")
+
+    n_removed = int((~mask).sum())
+    X_filt = X[mask].reset_index(drop=True)
+    y_filt = y[mask].reset_index(drop=True)
+    return X_filt, y_filt, n_removed
+
+
 # ── Orchestrator ─────────────────────────────────────────────────────────────
 
 def prepare_experiment(
@@ -183,6 +237,13 @@ def prepare_experiment(
     n_features_before = X.shape[1]
     if n_features_before == 0:
         raise ValueError("No feature columns remain after exclusion.")
+
+    # 0.5 — Outlier removal (before any other row-dropping)
+    n_outliers_removed = 0
+    if getattr(config, "outlier_strategy", "none") != "none":
+        X, y, n_outliers_removed = remove_outliers(X, y, config.outlier_strategy)
+        if X.empty:
+            raise ValueError("All rows were classified as outliers — relax the strategy.")
 
     # 1 — "drop" missing strategy is applied upstream of the pipeline because
     #     SimpleImputer can't drop rows. Other strategies happen inside the
@@ -256,4 +317,5 @@ def prepare_experiment(
         n_test=len(y_test),
         stratify_used=stratify_used,
         oversampling=(config.oversampling if problem_type == "classification" else "none"),
+        n_outliers_removed=n_outliers_removed,
     )

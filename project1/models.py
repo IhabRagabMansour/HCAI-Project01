@@ -83,6 +83,11 @@ class Experiment(models.Model):
         ("smote", "SMOTE (synthetic minority oversampling)"),
         ("random_over", "Random oversampling"),
     ]
+    OUTLIER_CHOICES = [
+        ("none",   "None"),
+        ("iqr",    "IQR (Tukey fences, 1.5×IQR)"),
+        ("zscore", "Z-score (|z| > 3)"),
+    ]
 
     dataset = models.ForeignKey(
         Dataset, on_delete=models.CASCADE, related_name="experiments"
@@ -107,6 +112,10 @@ class Experiment(models.Model):
     oversampling = models.CharField(
         max_length=20, choices=OVERSAMPLING_CHOICES, default="none"
     )
+    outlier_strategy = models.CharField(
+        max_length=20, choices=OUTLIER_CHOICES, default="none"
+    )
+    n_outliers_removed = models.PositiveIntegerField(null=True, blank=True)
 
     # Results (populated by prepare_experiment)
     n_train = models.PositiveIntegerField(null=True, blank=True)
@@ -151,6 +160,7 @@ class Experiment(models.Model):
             stratify=self.stratify,
             excluded_columns=list(self.excluded_columns or []),
             oversampling=self.oversampling,
+            outlier_strategy=self.outlier_strategy,
         )
 
 
