@@ -93,6 +93,33 @@ def evaluate_classification(estimator, prepared: PreparedData, label_map: dict |
         for yt, yp in zip(y_true_decoded, y_pred_decoded)
     ]
 
+    # Probability data for the threshold slider — binary classification only,
+    # and only when the estimator exposes predict_proba.
+    test_proba = None
+    if len(classes) == 2 and hasattr(estimator, "predict_proba"):
+        try:
+            proba = estimator.predict_proba(prepared.X_test)
+            # The model's class ordering might differ from our sorted classes.
+            # Find the column that corresponds to the "positive" class (classes[1]).
+            model_classes = list(getattr(estimator, "classes_", classes))
+            pos_col = model_classes.index(classes[1])
+            proba_pos = np.asarray(proba)[:, pos_col]
+
+            idx = _subsample_indices(len(prepared.y_test))
+            y_arr = np.asarray(prepared.y_test)[idx]
+            proba_arr = proba_pos[idx]
+            # y_true normalized to 0/1 where 1 = positive class
+            test_proba = {
+                "positive_class": labels_display[1],
+                "negative_class": labels_display[0],
+                "samples": [
+                    {"y_true": int(y == classes[1]), "proba": float(p)}
+                    for y, p in zip(y_arr, proba_arr)
+                ],
+            }
+        except Exception:
+            test_proba = None
+
     return {
         "problem_type": "classification",
         "labels": labels_display,
@@ -101,6 +128,7 @@ def evaluate_classification(estimator, prepared: PreparedData, label_map: dict |
         "confusion_matrix": cm,
         "per_class": per_class,
         "predictions_sample": predictions_sample,
+        "test_proba": test_proba,
     }
 
 

@@ -413,6 +413,59 @@
     text-decoration: underline;
 }
 
+/* ── Probability threshold slider ── */
+.p1-threshold-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    justify-content: center;
+    margin: 14px 0;
+    flex-wrap: wrap;
+}
+
+.p1-threshold-slider {
+    flex: 1;
+    min-width: 250px;
+    max-width: 500px;
+    height: 6px;
+    cursor: pointer;
+    accent-color: #275CB2;
+}
+
+.p1-threshold-bound {
+    color: #888;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+}
+
+.p1-threshold-current {
+    color: #275CB2;
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
+    min-width: 80px;
+}
+
+.p1-threshold-results {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+
+.p1-threshold-cm {
+    max-width: 360px;
+}
+
+.p1-threshold-metrics {
+    max-width: 260px;
+}
+
+.p1-threshold-metrics td {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
 /* ── Submit-time loading spinner ── */
 .p1-spinner {
     display: inline-block;

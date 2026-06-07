@@ -114,6 +114,63 @@
     </div>
 </div>
 
+{% if model.evaluation.test_proba %}
+<div class="p1-section">
+    <h2 class="p1-section-title">Probability threshold (binary)</h2>
+    <p class="p1-hint" style="text-align:center;">
+        Drag the slider to set the decision threshold for predicting
+        <strong>{{ model.evaluation.test_proba.positive_class }}</strong>.
+        The confusion matrix and metrics below update live based on
+        {{ model.evaluation.test_proba.samples|length }} test samples.
+    </p>
+
+    <div class="p1-threshold-row">
+        <span class="p1-threshold-bound">0.00</span>
+        <input type="range" id="threshold-slider" class="p1-threshold-slider"
+               min="0" max="1" step="0.01" value="0.5">
+        <span class="p1-threshold-bound">1.00</span>
+        <span class="p1-threshold-current">=&nbsp;<strong id="threshold-value">0.50</strong></span>
+    </div>
+
+    <div class="p1-threshold-results">
+        <table class="p1-table p1-cm-table p1-threshold-cm">
+            <thead>
+                <tr>
+                    <th rowspan="2" class="p1-cm-corner">True ↓ / Predicted →</th>
+                    <th colspan="2">Predicted class</th>
+                </tr>
+                <tr>
+                    <th>{{ model.evaluation.test_proba.negative_class }}</th>
+                    <th>{{ model.evaluation.test_proba.positive_class }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <th>{{ model.evaluation.test_proba.negative_class }}</th>
+                    <td class="p1-cm-cell p1-cm-diag" id="th-tn">—</td>
+                    <td class="p1-cm-cell" id="th-fp">—</td>
+                </tr>
+                <tr>
+                    <th>{{ model.evaluation.test_proba.positive_class }}</th>
+                    <td class="p1-cm-cell" id="th-fn">—</td>
+                    <td class="p1-cm-cell p1-cm-diag" id="th-tp">—</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <table class="p1-detail-table p1-threshold-metrics">
+            <tr><th>Accuracy</th>  <td id="th-accuracy">—</td></tr>
+            <tr><th>F1</th>        <td id="th-f1">—</td></tr>
+            <tr><th>Precision</th> <td id="th-precision">—</td></tr>
+            <tr><th>Recall</th>    <td id="th-recall">—</td></tr>
+        </table>
+    </div>
+
+    {{ model.evaluation.test_proba|json_script:"threshold-data" }}
+    <script src="{% static 'project1/threshold_slider.js' %}"></script>
+</div>
+{% endif %}
+
 <div class="p1-section">
     <h2 class="p1-section-title">Per-class report (test set)</h2>
     <table class="p1-table">

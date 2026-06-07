@@ -1184,6 +1184,165 @@ class TrainedModelRegressionFlowTest(TestCase):
         self.assertNotContains(response, "Accuracy")
 
 
+# ── Stage 17: probability threshold slider ─────────────────────────────────
+
+class TestProbaInEvaluationTest(TestCase):
+    def _binary_classification_pipeline(self, algo="logreg"):
+        from .services.pipeline import build_full_pipeline
+        np.random.seed(0)
+        df = pd.DataFrame({
+            "x1": np.concatenate([np.random.randn(50), np.random.randn(50) + 5]),
+            "x2": np.concatenate([np.random.randn(50), np.random.randn(50) + 5]),
+            "target": [0] * 50 + [1] * 50,
+        })
+        prepared = prepare_experiment(df, "target", "classification",
+                                      ExperimentConfig(stratify=False))
+        est = build_estimator(algo, 42)
+        pipe = build_full_pipeline(prepared.preprocessing, est)
+        pipe.fit(prepared.X_train, prepared.y_train)
+        return pipe, prepared
+
+    def _multiclass_pipeline(self):
+        from .services.pipeline import build_full_pipeline
+        np.random.seed(0)
+        df = pd.DataFrame({
+            "x1": np.concatenate([np.random.randn(40), np.random.randn(40) + 5, np.random.randn(40) - 5]),
+            "x2": np.concatenate([np.random.randn(40), np.random.randn(40) + 5, np.random.randn(40) + 10]),
+            "target": [0]*40 + [1]*40 + [2]*40,
+        })
+        prepared = prepare_experiment(df, "target", "classification",
+                                      ExperimentConfig(stratify=False))
+        est = build_estimator("logreg", 42)
+        pipe = build_full_pipeline(prepared.preprocessing, est)
+        pipe.fit(prepared.X_train, prepared.y_train)
+        return pipe, prepared
+
+    def _regression_pipeline(self):
+        from .services.pipeline import build_full_pipeline
+        np.random.seed(0)
+        x = np.random.randn(100)
+        df = pd.DataFrame({"x": x, "y": x * 2.0 + 1.0 + np.random.randn(100) * 0.1})
+        prepared = prepare_experiment(df, "y", "regression",
+                                      ExperimentConfig(stratify=False, scaling="none"))
+        est = build_estimator("linreg", 42)
+        pipe = build_full_pipeline(prepared.preprocessing, est)
+        pipe.fit(prepared.X_train, prepared.y_train)
+        return pipe, prepared
+
+    def test_test_proba_present_for_binary_with_predict_proba(self):
+        pipe, prepared = self._binary_classification_pipeline("logreg")
+        result = evaluate_classification(pipe, prepared, prepared.label_map)
+        self.assertIsNotNone(result.get("test_proba"))
+        self.assertIn("samples", result["test_proba"])
+        self.assertIn("positive_class", result["test_proba"])
+        self.assertIn("negative_class", result["test_proba"])
+
+    def test_test_proba_absent_for_multiclass(self):
+        pipe, prepared = self._multiclass_pipeline()
+        result = evaluate_classification(pipe, prepared, prepared.label_map)
+        self.assertIsNone(result.get("test_proba"))
+
+    def test_test_proba_absent_for_regression(self):
+        pipe, prepared = self._regression_pipeline()
+        # evaluate_regression doesn't have the field at all
+        from .services.evaluate import evaluate_regression
+        result = evaluate_regression(pipe, prepared)
+        self.assertNotIn("test_proba", result)
+
+    def test_test_proba_samples_have_required_keys(self):
+        pipe, prepared = self._binary_classification_pipeline("rf_clf")
+        result = evaluate_classification(pipe, prepared, prepared.label_map)
+        for s in result["test_proba"]["samples"]:
+            self.assertIn("y_true", s)
+            self.assertIn("proba", s)
+            # y_true is normalized 0/1
+            self.assertIn(s["y_true"], (0, 1))
+            # proba is in [0, 1]
+            self.assertGreaterEqual(s["proba"], 0.0)
+            self.assertLessEqual(s["proba"], 1.0)
+
+    def test_test_proba_capped_at_500_samples(self):
+        from .services.pipeline import build_full_pipeline
+        np.random.seed(0)
+        n = 3000
+        df = pd.DataFrame({
+            "x1": np.random.randn(n),
+            "x2": np.random.randn(n),
+            "target": np.random.randint(0, 2, n),
+        })
+        prepared = prepare_experiment(df, "target", "classification",
+                                      ExperimentConfig(stratify=False))
+        est = build_estimator("logreg", 42)
+        pipe = build_full_pipeline(prepared.preprocessing, est)
+        pipe.fit(prepared.X_train, prepared.y_train)
+        result = evaluate_classification(pipe, prepared, prepared.label_map)
+        self.assertLessEqual(len(result["test_proba"]["samples"]), 500)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ThresholdSliderUITest(TestCase):
+    def _setup(self, n_classes=2):
+        rows = []
+        if n_classes == 2:
+            for i in range(15):
+                rows.append(f"{i*0.1},{i*0.2},0")
+            for i in range(15):
+                rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+        else:
+            for i in range(15):
+                rows.append(f"{i*0.1},{i*0.2},0")
+            for i in range(15):
+                rows.append(f"{5 + i*0.1},{5 + i*0.2},1")
+            for i in range(15):
+                rows.append(f"{-5 + i*0.1},{-5 + i*0.2},2")
+        csv = ("a,b,target\n" + "\n".join(rows) + "\n").encode()
+        uploaded = SimpleUploadedFile("th.csv", csv, content_type="text/csv")
+        self.client.post("/project1/datasets/upload/", {"file": uploaded})
+        from .models import Dataset, Experiment, TrainedModel
+        dataset = Dataset.objects.first()
+        self.client.post(f"/project1/datasets/{dataset.pk}/experiments/new/", {
+            "name": "ExpTh",
+            "missing_strategy": "mean_mode",
+            "categorical_encoding": "onehot",
+            "scaling": "standard",
+            "test_size": "0.2",
+            "random_seed": "42",
+        })
+        experiment = Experiment.objects.first()
+        self.client.post(f"/project1/experiments/{experiment.pk}/models/new/", {
+            "name": "ThM",
+            "algorithm": "logreg",
+            "metric": "accuracy",
+            "cv_folds": "0",
+        })
+        return TrainedModel.objects.first()
+
+    def test_binary_detail_renders_slider(self):
+        m = self._setup(n_classes=2)
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, 'id="threshold-slider"')
+        self.assertContains(response, "threshold_slider.js")
+
+    def test_binary_detail_renders_dynamic_cells(self):
+        m = self._setup(n_classes=2)
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        for cell_id in ("th-tn", "th-fp", "th-fn", "th-tp",
+                        "th-accuracy", "th-f1", "th-precision", "th-recall"):
+            self.assertContains(response, f'id="{cell_id}"')
+
+    def test_multiclass_detail_omits_slider(self):
+        m = self._setup(n_classes=3)
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertNotContains(response, 'id="threshold-slider"')
+        self.assertNotContains(response, "threshold_slider.js")
+
+    def test_threshold_data_embedded(self):
+        m = self._setup(n_classes=2)
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, 'id="threshold-data"')
+        self.assertContains(response, "positive_class")
+
+
 # ── Stage 16: learning curve ───────────────────────────────────────────────
 
 class ComputeLearningCurveTest(TestCase):
