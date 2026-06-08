@@ -91,3 +91,49 @@
     font-size: 14px;
     font-family: monospace;
 }
+
+/* ── Hints ── */
+.p2-hint {
+    font-size: 13px;
+    color: #777;
+    margin-top: 8px;
+    text-align: center;
+}
+
+/* ── Decision tree image ── */
+.p2-tree-wrap {
+    overflow-x: auto;
+    text-align: center;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    background: #fff;
+}
+
+.p2-tree-img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* ── Tree text ── */
+.p2-details {
+    margin: 0 auto;
+    max-width: 700px;
+}
+
+.p2-details summary {
+    cursor: pointer;
+    color: #275CB2;
+    font-size: 15px;
+    padding: 6px 0;
+}
+
+.p2-tree-text {
+    background: #f4f7fc;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 12px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.4;
+}

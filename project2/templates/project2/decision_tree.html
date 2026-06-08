@@ -1,0 +1,37 @@
+{% extends 'project2/base.html' %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block project2_content %}
+
+<div class="p2-section">
+    <h2 class="p2-section-title">Fitted Decision Tree</h2>
+    <table class="p2-detail-table">
+        <tr><th>Model</th><td>Decision Tree (unconstrained)</td></tr>
+        <tr><th>Test accuracy</th><td><strong>{{ test_accuracy|floatformat:4 }}</strong></td></tr>
+        <tr><th>Number of leaves &Omega;</th><td><strong>{{ n_leaves }}</strong></td></tr>
+        <tr><th>Classes</th><td>{{ species|join:", " }}</td></tr>
+    </table>
+    <p class="p2-hint">
+        For a decision tree the complexity is &Omega;(f) = number of leaves.
+        Fewer leaves make the tree easier to interpret.
+    </p>
+</div>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">Tree Visualization</h2>
+    <div class="p2-tree-wrap">
+        <img class="p2-tree-img" src="data:image/png;base64,{{ tree_png }}"
+             alt="Decision tree visualization">
+    </div>
+</div>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">Tree as Text</h2>
+    <details class="p2-details">
+        <summary>Show <code>export_text</code> rendering</summary>
+        <pre class="p2-tree-text">{{ tree_text }}</pre>
+    </details>
+</div>
+
+{% endblock %}
