@@ -45,7 +45,7 @@
         <canvas id="proba-chart"></canvas>
     </div>
     {{ pred_probs_list|json_script:"proba-data" }}
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="{% static 'project1/lib/chart.umd.min.js' %}"></script>
     <script src="{% static 'project1/predict_chart.js' %}"></script>
     {% endif %}
 </div>

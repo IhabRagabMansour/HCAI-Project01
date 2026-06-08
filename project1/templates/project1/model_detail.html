@@ -102,7 +102,6 @@
         <strong>Both low</strong> = underfitting.
     </p>
     {{ model.evaluation.learning_curve|json_script:"learning-curve-data" }}
-    <script src="{% static 'project1/learning_curve_chart.js' %}"></script>
 </div>
 {% endif %}
 
@@ -233,9 +232,12 @@
 </div>
 
 {{ model.evaluation|json_script:"model-evaluation" }}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2/dist/chartjs-chart-matrix.min.js"></script>
-<script src="{% static 'project1/model_chart.js' %}"></script>
+<script src="{% static 'project1/lib/chart.umd.min.js' %}?v=20260608"></script>
+<script src="{% static 'project1/lib/chartjs-chart-matrix.min.js' %}?v=20260608"></script>
+<script src="{% static 'project1/model_chart.js' %}?v=20260608"></script>
+{% if model.evaluation.learning_curve %}
+<script src="{% static 'project1/learning_curve_chart.js' %}?v=20260608"></script>
+{% endif %}
 
 {% else %}
 <div class="p1-section">

@@ -5,6 +5,36 @@
     const canvas = document.getElementById("lc-chart");
     if (!dataEl || !canvas) return;
 
+    waitForChart(render);
+
+    function waitForChart(callback) {
+        if (typeof window.Chart !== "undefined") {
+            callback();
+            return;
+        }
+
+        let attempts = 0;
+        const timer = window.setInterval(() => {
+            attempts += 1;
+            if (typeof window.Chart !== "undefined") {
+                window.clearInterval(timer);
+                callback();
+            } else if (attempts >= 100) {
+                window.clearInterval(timer);
+                showChartError("Chart.js could not be loaded. Refresh the page and try again.");
+            }
+        }, 50);
+    }
+
+    function showChartError(message) {
+        const p = document.createElement("p");
+        p.className = "p1-chart-error";
+        p.textContent = message;
+        canvas.insertAdjacentElement("afterend", p);
+    }
+
+    function render() {
+
     let lc;
     try { lc = JSON.parse(dataEl.textContent); }
     catch (e) { return; }
@@ -19,7 +49,7 @@
     const valLower   = lc.val_mean.map((m, i) => m - lc.val_std[i]);
     const valUpper   = lc.val_mean.map((m, i) => m + lc.val_std[i]);
 
-    new Chart(canvas, {
+    new window.Chart(canvas, {
         type: "line",
         data: {
             labels: sizes,
@@ -113,4 +143,5 @@
             },
         },
     });
+    }
 })();

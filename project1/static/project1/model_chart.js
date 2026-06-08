@@ -10,15 +10,45 @@
     }
     if (!data) return;
 
-    if (data.problem_type === "classification") {
-        renderConfusionMatrix(data);
-    } else if (data.problem_type === "regression") {
-        renderPredictedVsActual(data);
-        renderResiduals(data);
+    waitForChart(() => {
+        if (data.problem_type === "classification") {
+            renderConfusionMatrix(data);
+        } else if (data.problem_type === "regression") {
+            renderPredictedVsActual(data);
+            renderResiduals(data);
+        }
+
+        if (data.feature_importance && data.feature_importance.length > 0) {
+            renderFeatureImportance(data.feature_importance);
+        }
+    });
+
+    function waitForChart(callback) {
+        if (typeof window.Chart !== "undefined") {
+            callback();
+            return;
+        }
+
+        let attempts = 0;
+        const timer = window.setInterval(() => {
+            attempts += 1;
+            if (typeof window.Chart !== "undefined") {
+                window.clearInterval(timer);
+                callback();
+            } else if (attempts >= 100) {
+                window.clearInterval(timer);
+                showChartError("Chart.js could not be loaded. Refresh the page and try again.");
+            }
+        }, 50);
     }
 
-    if (data.feature_importance && data.feature_importance.length > 0) {
-        renderFeatureImportance(data.feature_importance);
+    function showChartError(message) {
+        const canvas = document.querySelector("#cm-chart, #pva-chart, #res-chart, #fi-chart");
+        if (!canvas) return;
+        const p = document.createElement("p");
+        p.className = "p1-chart-error";
+        p.textContent = message;
+        canvas.insertAdjacentElement("afterend", p);
     }
 
     // ── Confusion matrix heatmap ────────────────────────────────────────
@@ -38,7 +68,7 @@
             }
         }
 
-        new Chart(canvas, {
+        new window.Chart(canvas, {
             type: "matrix",
             data: {
                 datasets: [{
@@ -83,7 +113,7 @@
         const min = Math.min(...all);
         const max = Math.max(...all);
 
-        new Chart(canvas, {
+        new window.Chart(canvas, {
             type: "scatter",
             data: {
                 datasets: [
@@ -134,7 +164,7 @@
         const min = Math.min(...xs);
         const max = Math.max(...xs);
 
-        new Chart(canvas, {
+        new window.Chart(canvas, {
             type: "scatter",
             data: {
                 datasets: [
@@ -181,7 +211,7 @@
         if (!canvas) return;
 
         const top = items.slice(0, 20);
-        new Chart(canvas, {
+        new window.Chart(canvas, {
             type: "bar",
             data: {
                 labels: top.map(i => i.name),

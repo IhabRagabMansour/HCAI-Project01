@@ -1,3 +1,7 @@
 from django.test import TestCase
 
-# Create your tests here.
+
+class RootUrlTest(TestCase):
+    def test_root_redirects_to_home(self):
+        response = self.client.get("/")
+        self.assertRedirects(response, "/home/", fetch_redirect_response=False)

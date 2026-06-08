@@ -1,0 +1,38 @@
+{% extends 'project2/base.html' %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block project2_content %}
+<p class="centered-text">{{ description }}</p>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">Dataset: Palmer Penguins</h2>
+    <table class="p2-detail-table">
+        <tr><th>Total clean rows</th><td>{{ n_total }}</td></tr>
+        <tr><th>Training rows</th><td>{{ n_train }}</td></tr>
+        <tr><th>Test rows</th><td>{{ n_test }}</td></tr>
+        <tr><th>Target</th><td><code>species</code></td></tr>
+        <tr><th>Classes</th><td>{{ species|join:", " }}</td></tr>
+        <tr>
+            <th>Numeric features</th>
+            <td>{% for f in numeric_features %}<code>{{ f }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        </tr>
+        <tr>
+            <th>Categorical features</th>
+            <td>{% for f in categorical_features %}<code>{{ f }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        </tr>
+        <tr>
+            <th>PDP / ALE features</th>
+            <td>{% for f in biometric_features %}<code>{{ f }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        </tr>
+    </table>
+</div>
+
+<div class="p2-section">
+    <div class="p2-msg p2-msg--info">
+        The interactive dashboard (model selector, &lambda; slider, counterfactuals,
+        PDP &amp; ALE) is being built in stages. This page confirms the dataset
+        loads, cleans, and splits correctly.
+    </div>
+</div>
+{% endblock %}

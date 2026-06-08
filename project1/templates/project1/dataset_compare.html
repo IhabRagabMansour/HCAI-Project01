@@ -114,7 +114,7 @@
 </div>
 
 {{ chart_payload|json_script:"compare-payload" }}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{% static 'project1/lib/chart.umd.min.js' %}"></script>
 <script src="{% static 'project1/compare_chart.js' %}"></script>
 
 {% elif selected_models|length == 1 %}

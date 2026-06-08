@@ -122,7 +122,7 @@
                                value="{{ spec.default }}"
                                min="{{ spec.min }}"
                                max="{{ spec.max }}"
-                               step="{{ spec.step }}">
+                               step="{% if spec.type == 'int' %}{{ spec.step }}{% else %}any{% endif %}">
                     {% endif %}
 
                     {% if spec.hint %}<p class="p1-hint" style="margin-top:4px;">{{ spec.hint }}</p>{% endif %}
