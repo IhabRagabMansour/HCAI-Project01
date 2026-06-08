@@ -1,0 +1,101 @@
+{% extends 'project2/base.html' %}
+{% load static %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block project2_content %}
+
+{# ── Controls (GET form; state lives in the URL) ─────────────────────────── #}
+<form method="get" id="p2-controls" class="p2-controls">
+    <div class="p2-control">
+        <label for="model">Model class</label>
+        <select name="model" id="model" class="p2-select">
+            {% for value, label in model_classes %}
+                <option value="{{ value }}"{% if value == model_class %} selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="p2-control p2-control--slider">
+        <label for="lambda">
+            &lambda; (accuracy &harr; simplicity):
+            <strong id="lambda-value">{{ lam|floatformat:3 }}</strong>
+        </label>
+        <input type="range" name="lambda" id="lambda"
+               min="{{ lambda_min }}" max="{{ lambda_max }}" step="{{ lambda_step }}"
+               value="{{ lam }}" class="p2-slider">
+        <div class="p2-slider-ends">
+            <span>{{ lambda_min }} (accuracy)</span>
+            <span>{{ lambda_max }} (simplicity)</span>
+        </div>
+    </div>
+
+    <noscript><button type="submit">Apply</button></noscript>
+</form>
+
+{# ── Region A: selected model ────────────────────────────────────────────── #}
+<div class="p2-section">
+    <h2 class="p2-section-title">Selected Model</h2>
+    <table class="p2-detail-table">
+        <tr><th>Model class</th><td>{{ selected.entry.model_class }}</td></tr>
+        <tr><th>Fitting parameter ({{ param_label }})</th><td>{{ selected.entry.param_display }}</td></tr>
+        <tr><th>&lambda; (interface)</th><td>{{ lam|floatformat:3 }}</td></tr>
+        <tr><th>Test accuracy</th><td><strong>{{ selected.test_accuracy|floatformat:4 }}</strong></td></tr>
+        <tr><th>Complexity &Omega; ({{ complexity_label }})</th><td><strong>{{ selected.complexity }}</strong></td></tr>
+    </table>
+
+    {% if model_class == "tree" %}
+    <div class="p2-tree-wrap" style="margin-top:14px;">
+        <img class="p2-tree-img" src="data:image/png;base64,{{ tree_png }}" alt="Selected decision tree">
+    </div>
+    {% else %}
+    <div class="p2-msg p2-msg--info" style="margin-top:14px;">
+        The logistic-regression coefficient table is added in the next stage (Task 3).
+    </div>
+    {% endif %}
+</div>
+
+{# ── Accuracy / complexity frontier ──────────────────────────────────────── #}
+<div class="p2-section">
+    <h2 class="p2-section-title">Accuracy vs. Complexity</h2>
+    <div class="p2-chart-wrap">
+        <canvas id="frontier-chart"></canvas>
+    </div>
+    <p class="p2-hint">Each point is one trained model. The highlighted point is the &lambda;-selected model.</p>
+</div>
+
+{# ── Task 2/3: grid table with selection score ──────────────────────────── #}
+<div class="p2-section">
+    <h2 class="p2-section-title">Model Grid &amp; Selection Score</h2>
+    <p class="p2-hint">
+        Selection score = (1 &minus; accuracy) + &lambda; &middot; &Omega;, minimized.
+        The selected row (lowest score at the current &lambda;) is highlighted.
+    </p>
+    <table class="p2-table">
+        <thead>
+            <tr>
+                <th>{{ param_label }}</th>
+                <th>Test accuracy</th>
+                <th>&Omega; ({{ complexity_label }})</th>
+                <th>Selection score</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in grid_rows %}
+            <tr{% if row.is_selected %} class="p2-row-selected"{% endif %}>
+                <td>{{ row.param_display }}</td>
+                <td>{{ row.test_accuracy|floatformat:4 }}</td>
+                <td>{{ row.complexity }}</td>
+                <td>{{ row.score|floatformat:4 }}{% if row.is_selected %} &#9733;{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{{ frontier_payload|json_script:"frontier-data" }}
+<script src="{% static 'project2/lib/chart.umd.min.js' %}"></script>
+<script src="{% static 'project2/frontier_chart.js' %}"></script>
+<script src="{% static 'project2/dashboard_controls.js' %}"></script>
+
+{% endblock %}

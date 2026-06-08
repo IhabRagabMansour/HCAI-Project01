@@ -242,3 +242,141 @@ class DecisionTreeViewTest(TestCase):
     def test_nav_links_to_decision_tree(self):
         response = self.client.get("/project2/")
         self.assertContains(response, "/project2/decision-tree/")
+
+
+# ── Stage P2-3: lambda selection + dashboard (Task 2) ──────────────────────
+
+class SelectionScoreTest(TestCase):
+    def test_score_is_error_plus_penalty(self):
+        from .services.selection import selection_score
+        # (1 - 0.9) + 0.01 * 5 = 0.1 + 0.05 = 0.15
+        self.assertAlmostEqual(selection_score(0.9, 5, 0.01), 0.15)
+
+    def test_lambda_zero_is_pure_error(self):
+        from .services.selection import selection_score
+        self.assertAlmostEqual(selection_score(0.95, 20, 0.0), 0.05)
+
+
+class SelectBestTest(TestCase):
+    def _grid(self):
+        # (model_class, param_name, param_value, pipeline, test_acc, complexity)
+        from .services.grids import ModelEntry
+        return (
+            ModelEntry("tree", "max_leaf_nodes", 2, None, 0.94, 2),
+            ModelEntry("tree", "max_leaf_nodes", 5, None, 0.97, 5),
+            ModelEntry("tree", "max_leaf_nodes", None, None, 1.00, 17),
+        )
+
+    def test_lambda_zero_picks_most_accurate(self):
+        from .services.selection import select_best
+        best = select_best(self._grid(), lam=0.0)
+        self.assertEqual(best.test_accuracy, 1.00)
+
+    def test_large_lambda_picks_simplest(self):
+        from .services.selection import select_best
+        best = select_best(self._grid(), lam=0.05)
+        self.assertEqual(best.complexity, 2)
+
+    def test_intermediate_lambda_picks_middle(self):
+        from .services.selection import select_best
+        # At lam=0.005: scores = 0.06+0.010=0.070 ; 0.03+0.025=0.055 ; 0.0+0.085=0.085
+        # The middle model (Omega=5) is the unique minimizer.
+        best = select_best(self._grid(), lam=0.005)
+        self.assertEqual(best.complexity, 5)
+
+    def test_tie_breaks_toward_simpler(self):
+        from .services.grids import ModelEntry
+        from .services.selection import select_best
+        grid = (
+            ModelEntry("tree", "max_leaf_nodes", 3, None, 1.0, 3),
+            ModelEntry("tree", "max_leaf_nodes", 10, None, 1.0, 10),
+        )
+        best = select_best(grid, lam=0.0)  # both error 0 -> simpler wins
+        self.assertEqual(best.complexity, 3)
+
+
+class GetSelectedModelTest(TestCase):
+    def test_lambda_zero_tree_is_accurate(self):
+        from .services.selection import get_selected_model
+        sel = get_selected_model("tree", lam=0.0, seed=42)
+        self.assertGreater(sel.test_accuracy, 0.9)
+
+    def test_high_lambda_tree_is_simplest_useful(self):
+        # The 2-leaf tree cannot separate 3 species (only ~76% acc), so even at
+        # high lambda the 3-leaf tree (the 3-class floor) is the minimizer.
+        from .services.selection import get_selected_model
+        sel = get_selected_model("tree", lam=0.05, seed=42)
+        self.assertEqual(sel.complexity, 3)
+
+    def test_increasing_lambda_is_non_increasing_in_complexity(self):
+        from .services.selection import get_selected_model
+        complexities = [
+            get_selected_model("tree", lam=lam, seed=42).complexity
+            for lam in [0.0, 0.005, 0.01, 0.02, 0.05]
+        ]
+        # Higher lambda should never select a more complex model
+        for a, b in zip(complexities, complexities[1:]):
+            self.assertGreaterEqual(a, b)
+
+    def test_works_for_logreg(self):
+        from .services.selection import get_selected_model
+        sel = get_selected_model("logreg", lam=0.0, seed=42)
+        self.assertEqual(sel.model_class, "logreg")
+        self.assertGreater(sel.test_accuracy, 0.9)
+
+    def test_clamp_lambda_out_of_range(self):
+        from .services.selection import clamp_lambda, LAMBDA_MAX
+        self.assertEqual(clamp_lambda("999"), LAMBDA_MAX)
+        self.assertEqual(clamp_lambda("-1"), 0.0)
+        self.assertEqual(clamp_lambda("abc"), 0.0)
+
+    def test_normalize_model_class(self):
+        from .services.selection import normalize_model_class
+        self.assertEqual(normalize_model_class("logreg"), "logreg")
+        self.assertEqual(normalize_model_class("bogus"), "tree")
+        self.assertEqual(normalize_model_class(None), "tree")
+
+
+class DashboardViewTest(TestCase):
+    def test_returns_200(self):
+        response = self.client.get("/project2/dashboard/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_has_controls(self):
+        response = self.client.get("/project2/dashboard/")
+        self.assertContains(response, 'name="model"')
+        self.assertContains(response, 'name="lambda"')
+        self.assertContains(response, 'id="frontier-chart"')
+
+    def test_default_is_tree_with_plot(self):
+        response = self.client.get("/project2/dashboard/")
+        self.assertContains(response, "data:image/png;base64,")
+
+    def test_grid_table_present(self):
+        response = self.client.get("/project2/dashboard/")
+        self.assertContains(response, "Selection score")
+
+    def test_high_lambda_selects_simplest_tree(self):
+        response = self.client.get("/project2/dashboard/?model=tree&lambda=0.05")
+        self.assertContains(response, "p2-row-selected")
+        # The 3-leaf tree is the simplest useful model for 3 classes
+        self.assertContains(response, "<strong>3</strong>")
+
+    def test_logreg_mode_defers_coef_table(self):
+        response = self.client.get("/project2/dashboard/?model=logreg&lambda=0.0")
+        self.assertContains(response, "Task 3")
+        # No tree PNG in logreg mode
+        self.assertNotContains(response, "data:image/png;base64,")
+
+    def test_frontier_payload_embedded(self):
+        response = self.client.get("/project2/dashboard/")
+        self.assertContains(response, 'id="frontier-data"')
+        self.assertContains(response, "frontier_chart.js")
+
+    def test_invalid_params_fall_back_gracefully(self):
+        response = self.client.get("/project2/dashboard/?model=bogus&lambda=nan")
+        self.assertEqual(response.status_code, 200)
+
+    def test_nav_has_dashboard_link(self):
+        response = self.client.get("/project2/")
+        self.assertContains(response, "/project2/dashboard/")
