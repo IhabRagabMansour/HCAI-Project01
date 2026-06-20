@@ -68,6 +68,7 @@ class PenguinData:
     X_all: pd.DataFrame          # all clean rows (features only) — used by PDP/ALE
     y_all: pd.Series
     mad: dict                    # numeric feature name -> MAD (>= epsilon)
+    numeric_std: dict            # numeric feature name -> std (for CF Gaussian noise)
     categories: dict             # categorical feature name -> sorted list of values
     numeric_ranges: dict         # numeric feature name -> (min, max) observed
     observed_years: list         # sorted unique observed years
@@ -121,6 +122,7 @@ def get_penguin_data(seed: int = 42, test_size: float = 0.2) -> PenguinData:
     )
 
     mad = compute_mad(df)
+    numeric_std = {col: float(df[col].std()) for col in NUMERIC_FEATURES}
     categories = {
         col: sorted(df[col].astype(str).unique().tolist())
         for col in CATEGORICAL_FEATURES
@@ -139,6 +141,7 @@ def get_penguin_data(seed: int = 42, test_size: float = 0.2) -> PenguinData:
         X_all=X.reset_index(drop=True),
         y_all=y.reset_index(drop=True),
         mad=mad,
+        numeric_std=numeric_std,
         categories=categories,
         numeric_ranges=numeric_ranges,
         observed_years=observed_years,

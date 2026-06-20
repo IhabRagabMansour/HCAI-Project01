@@ -49,9 +49,129 @@
         <img class="p2-tree-img" src="data:image/png;base64,{{ tree_png }}" alt="Selected decision tree">
     </div>
     {% else %}
-    <div class="p2-msg p2-msg--info" style="margin-top:14px;">
-        The logistic-regression coefficient table is added in the next stage (Task 3).
+    <h3 class="p2-subtitle">Coefficient table</h3>
+    <p class="p2-hint">
+        Coefficients are for <em>standardized</em> features, so magnitudes are
+        comparable across features. Zero cells (L1 sparsity) are greyed;
+        nonzero cells are highlighted. Complexity &Omega; counts the nonzero cells.
+    </p>
+    <div class="p2-table-scroll">
+        <table class="p2-table p2-coef-table">
+            <thead>
+                <tr>
+                    <th>Feature</th>
+                    {% for cls in coef_table.classes %}<th>{{ cls }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in coef_table.rows %}
+                <tr{% if not row.any_nonzero %} class="p2-coef-allzero"{% endif %}>
+                    <td class="p2-coef-feature"><code>{{ row.feature }}</code></td>
+                    {% for cell in row.cells %}
+                        <td class="{% if cell.nonzero %}p2-coef-nz{% else %}p2-coef-zero{% endif %}">
+                            {{ cell.value|floatformat:3 }}
+                        </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+                <tr class="p2-coef-intercept">
+                    <td class="p2-coef-feature"><em>intercept</em></td>
+                    {% for b in coef_table.intercepts %}<td>{{ b|floatformat:3 }}</td>{% endfor %}
+                </tr>
+            </tbody>
+        </table>
     </div>
+    <p class="p2-hint">
+        Nonzero coefficients: <strong>{{ coef_table.n_nonzero }}</strong>
+        of {{ coef_table.n_total_coefs }} total
+        ({{ coef_table.n_features }} features &times; {{ coef_table.classes|length }} classes).
+    </p>
+    {% endif %}
+</div>
+
+{# ── Region B: counterfactual explanations ──────────────────────────────── #}
+<div class="p2-section">
+    <h2 class="p2-section-title">Counterfactual Explanations</h2>
+    <p class="p2-hint">
+        Generated with the <strong>currently selected model</strong>
+        ({{ selected.entry.model_class }}, &lambda;={{ lam|floatformat:3 }}).
+        Local random samples near the example that the model predicts as the
+        target species, ranked by MAD-weighted L1 distance.
+    </p>
+
+    <div class="p2-cf-controls">
+        <div class="p2-control">
+            <label for="cf_row">Example row (0&ndash;{{ n_rows|add:"-1" }})</label>
+            <input type="number" name="cf_row" id="cf_row" form="p2-controls"
+                   min="0" max="{{ n_rows|add:'-1' }}" value="{{ cf_row }}" class="p2-select">
+        </div>
+        <div class="p2-control">
+            <label for="cf_target">Target species</label>
+            <select name="cf_target" id="cf_target" form="p2-controls" class="p2-select">
+                <option value="">&mdash; choose &mdash;</option>
+                {% for sp in species %}
+                    <option value="{{ sp }}"{% if sp == cf_target %} selected{% endif %}>{{ sp }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="p2-control">
+            <label for="cf_k">How many (k)</label>
+            <input type="number" name="cf_k" id="cf_k" form="p2-controls"
+                   min="1" max="10" value="{{ cf_k }}" class="p2-select">
+        </div>
+    </div>
+
+    <table class="p2-detail-table" style="margin-top:12px;">
+        <tr><th>Selected example</th><td>row {{ cf_row }} &mdash; true species <code>{{ x_true_class }}</code></td></tr>
+        <tr><th>Model's prediction</th><td><code>{{ x_pred_class }}</code></td></tr>
+        <tr>
+            <th>Original values</th>
+            <td>
+                {% for c in original_cells %}<code>{{ c.feature }}={{ c.display }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}
+            </td>
+        </tr>
+    </table>
+
+    {% if cf_target %}
+        {% if cf_table %}
+        <div class="p2-table-scroll" style="margin-top:12px;">
+            <table class="p2-table p2-cf-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        {% for f in input_features %}<th>{{ f }}</th>{% endfor %}
+                        <th>Pred</th>
+                        <th>P(target)</th>
+                        <th>Distance</th>
+                        <th>#changed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cf in cf_table %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        {% for cell in cf.cells %}
+                            <td class="{% if cell.changed %}p2-cf-changed{% endif %}">{{ cell.display }}</td>
+                        {% endfor %}
+                        <td><code>{{ cf.predicted_class }}</code></td>
+                        <td>{{ cf.target_proba|floatformat:3 }}</td>
+                        <td>{{ cf.distance|floatformat:3 }}</td>
+                        <td>{{ cf.n_changed }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="p2-hint">Changed feature values are highlighted. Distance = MAD-weighted L1 over numeric features.</p>
+        {% else %}
+        <div class="p2-msg p2-msg--warning" style="margin-top:12px;">
+            No counterfactuals found for target <strong>{{ cf_target }}</strong> even after widening the search.
+        </div>
+        {% endif %}
+    {% else %}
+        <div class="p2-msg p2-msg--info" style="margin-top:12px;">
+            Choose a target species above to generate counterfactuals.
+        </div>
     {% endif %}
 </div>
 

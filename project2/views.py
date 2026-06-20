@@ -1,3 +1,4 @@
+import pandas as pd
 from django.shortcuts import render
 
 from .services.data import (
@@ -6,12 +7,27 @@ from .services.data import (
 )
 from .services.grids import unconstrained_tree_entry, get_grid
 from .services.treeviz import tree_to_png_base64, tree_to_text
+from .services.coefs import coefficient_table
 from .services.selection import (
     get_selected_model, selection_score, clamp_lambda, normalize_model_class,
     LAMBDA_MIN, LAMBDA_MAX, LAMBDA_STEP, LAMBDA_DEFAULT, MODEL_CLASSES,
 )
+from .services.counterfactuals import (
+    generate_counterfactuals, CounterfactualConfig,
+)
 
 DEFAULT_SEED = 42
+CF_N_CANDIDATES = 600
+CF_K_DEFAULT = 5
+
+
+def _fmt_value(feat, val):
+    """Human-readable display string for a feature value."""
+    if feat in CATEGORICAL_FEATURES:
+        return str(val)
+    if feat == "year":
+        return str(int(val))
+    return f"{float(val):.1f}"
 
 
 def index(request):
@@ -88,6 +104,47 @@ def dashboard(request):
     param_label = "max_leaf_nodes" if model_class == "tree" else "C"
     complexity_label = "Number of leaves" if model_class == "tree" else "Nonzero coefficients"
 
+    # ── Region B: counterfactual explanations (uses the SAME selected model) ──
+    data = get_penguin_data(seed)
+    n_rows = len(data.X_all)
+
+    cf_row = _parse_int(request.GET.get("cf_row"), default=0, lo=0, hi=n_rows - 1)
+    cf_target = request.GET.get("cf_target", "")
+    if cf_target not in SPECIES_ORDER:
+        cf_target = ""
+    cf_k = _parse_int(request.GET.get("cf_k"), default=CF_K_DEFAULT, lo=1, hi=10)
+
+    x = data.X_all.iloc[cf_row].to_dict()
+    x_true_class = str(data.y_all.iloc[cf_row])
+    x_pred_class = str(selected.pipeline.predict(pd.DataFrame([x], columns=INPUT_FEATURES))[0])
+
+    original_cells = [
+        {"feature": f, "display": _fmt_value(f, x[f])} for f in INPUT_FEATURES
+    ]
+
+    cf_table = []
+    if cf_target:
+        cfs = generate_counterfactuals(
+            selected.pipeline, x, cf_target, data,
+            CounterfactualConfig(n_candidates=CF_N_CANDIDATES, k=cf_k, seed=0),
+        )
+        for cf in cfs:
+            cells = [
+                {
+                    "feature": f,
+                    "display": _fmt_value(f, cf.row[f]),
+                    "changed": f in cf.changed_features,
+                }
+                for f in INPUT_FEATURES
+            ]
+            cf_table.append({
+                "cells": cells,
+                "predicted_class": cf.predicted_class,
+                "target_proba": cf.target_proba,
+                "distance": cf.distance,
+                "n_changed": cf.n_changed,
+            })
+
     context = {
         "title": "Project 2 — Dashboard",
         "model_class": model_class,
@@ -106,7 +163,26 @@ def dashboard(request):
             "complexity_label": complexity_label,
         },
         "species": SPECIES_ORDER,
-        # Region A rendering: tree plot for trees; logreg coef table comes in P2-4
+        # Region A rendering: tree plot for trees; coefficient table for logreg
         "tree_png": tree_to_png_base64(selected.pipeline) if model_class == "tree" else None,
+        "coef_table": coefficient_table(selected.pipeline) if model_class == "logreg" else None,
+        # Region B: counterfactuals
+        "input_features": INPUT_FEATURES,
+        "n_rows": n_rows,
+        "cf_row": cf_row,
+        "cf_target": cf_target,
+        "cf_k": cf_k,
+        "x_true_class": x_true_class,
+        "x_pred_class": x_pred_class,
+        "original_cells": original_cells,
+        "cf_table": cf_table,
     }
     return render(request, "project2/dashboard.html", context)
+
+
+def _parse_int(value, default, lo, hi):
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, v))

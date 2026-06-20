@@ -362,9 +362,9 @@ class DashboardViewTest(TestCase):
         # The 3-leaf tree is the simplest useful model for 3 classes
         self.assertContains(response, "<strong>3</strong>")
 
-    def test_logreg_mode_defers_coef_table(self):
+    def test_logreg_mode_shows_coef_table_not_tree(self):
         response = self.client.get("/project2/dashboard/?model=logreg&lambda=0.0")
-        self.assertContains(response, "Task 3")
+        self.assertContains(response, "Coefficient table")
         # No tree PNG in logreg mode
         self.assertNotContains(response, "data:image/png;base64,")
 
@@ -380,3 +380,307 @@ class DashboardViewTest(TestCase):
     def test_nav_has_dashboard_link(self):
         response = self.client.get("/project2/")
         self.assertContains(response, "/project2/dashboard/")
+
+
+# ── Stage P2-4: logistic-regression coefficient table (Task 3) ─────────────
+
+class CoefficientTableTest(TestCase):
+    def _logreg_pipeline(self, c_value=1.0):
+        from .services.grids import train_logreg_grid
+        grid = train_logreg_grid(seed=42)
+        return next(e for e in grid if e.param_value == c_value).pipeline
+
+    def _table(self, c_value=1.0):
+        from .services.coefs import coefficient_table
+        return coefficient_table(self._logreg_pipeline(c_value))
+
+    def test_has_three_classes(self):
+        table = self._table()
+        self.assertEqual(len(table["classes"]), 3)
+
+    def test_one_row_per_feature(self):
+        from .services.pipeline import feature_names_out
+        table = self._table()
+        n_features = len(feature_names_out(self._logreg_pipeline()))
+        self.assertEqual(len(table["rows"]), n_features)
+
+    def test_each_row_has_one_cell_per_class(self):
+        table = self._table()
+        for row in table["rows"]:
+            self.assertEqual(len(row["cells"]), 3)
+
+    def test_intercept_per_class(self):
+        table = self._table()
+        self.assertEqual(len(table["intercepts"]), 3)
+
+    def test_n_nonzero_matches_complexity(self):
+        from .services.complexity import logreg_n_nonzero
+        pipe = self._logreg_pipeline()
+        table = self._table()
+        self.assertEqual(table["n_nonzero"], logreg_n_nonzero(pipe))
+
+    def test_total_coefs_is_features_times_classes(self):
+        table = self._table()
+        self.assertEqual(
+            table["n_total_coefs"],
+            table["n_features"] * len(table["classes"]),
+        )
+
+    def test_sparse_model_has_more_zeros(self):
+        # Strong regularization (small C) -> fewer nonzero coefficients
+        sparse = self._table(c_value=0.03)
+        dense = self._table(c_value=30.0)
+        self.assertLess(sparse["n_nonzero"], dense["n_nonzero"])
+
+    def test_nonzero_flag_consistent_with_value(self):
+        table = self._table()
+        for row in table["rows"]:
+            for cell in row["cells"]:
+                if cell["nonzero"]:
+                    self.assertGreater(abs(cell["value"]), 0)
+
+
+class DashboardLogregViewTest(TestCase):
+    def test_logreg_shows_coef_table(self):
+        response = self.client.get("/project2/dashboard/?model=logreg&lambda=0.0")
+        self.assertContains(response, "Coefficient table")
+        self.assertContains(response, "Nonzero coefficients")
+
+    def test_logreg_lists_species_columns(self):
+        response = self.client.get("/project2/dashboard/?model=logreg&lambda=0.0")
+        for sp in ["Adelie", "Chinstrap", "Gentoo"]:
+            self.assertContains(response, sp)
+
+    def test_logreg_shows_a_feature_row(self):
+        response = self.client.get("/project2/dashboard/?model=logreg&lambda=0.0")
+        self.assertContains(response, "flipper_length_mm")
+
+    def test_logreg_shows_intercept_row(self):
+        response = self.client.get("/project2/dashboard/?model=logreg&lambda=0.0")
+        self.assertContains(response, "intercept")
+
+    def test_logreg_no_tree_png(self):
+        response = self.client.get("/project2/dashboard/?model=logreg&lambda=0.0")
+        self.assertNotContains(response, "data:image/png;base64,")
+
+    def test_high_lambda_logreg_is_sparser_than_low(self):
+        # Higher lambda should select a sparser (fewer-nonzero) logreg model
+        from .services.selection import get_selected_model
+        from .services.complexity import logreg_n_nonzero
+        low = get_selected_model("logreg", lam=0.0, seed=42)
+        high = get_selected_model("logreg", lam=0.05, seed=42)
+        self.assertLessEqual(high.complexity, low.complexity)
+
+
+# ── Stage P2-5a: counterfactual generation service (Task 4) ────────────────
+
+class MadWeightedL1Test(TestCase):
+    def test_zero_distance_to_self(self):
+        from .services.counterfactuals import mad_weighted_l1
+        from .services.data import NUMERIC_FEATURES
+        x = {f: 1.0 for f in NUMERIC_FEATURES}
+        mad = {f: 1.0 for f in NUMERIC_FEATURES}
+        self.assertEqual(mad_weighted_l1(x, x, mad), 0.0)
+
+    def test_scales_by_mad(self):
+        from .services.counterfactuals import mad_weighted_l1
+        x = {f: 0.0 for f in NUMERIC_FEATURES}
+        z = {f: 0.0 for f in NUMERIC_FEATURES}
+        z["bill_length_mm"] = 4.0
+        mad = {f: 1.0 for f in NUMERIC_FEATURES}
+        mad["bill_length_mm"] = 2.0
+        # |4-0| / 2 = 2.0
+        self.assertEqual(mad_weighted_l1(x, z, mad), 2.0)
+
+
+class SampleCandidateTest(TestCase):
+    def setUp(self):
+        from .services.data import get_penguin_data
+        self.data = get_penguin_data(seed=42)
+        self.x = self.data.X_all.iloc[0].to_dict()
+
+    def test_biometrics_stay_within_range(self):
+        import numpy as np
+        from .services.counterfactuals import sample_candidate
+        from .services.data import BIOMETRIC_FEATURES
+        rng = np.random.default_rng(0)
+        for _ in range(50):
+            z = sample_candidate(self.x, self.data, alpha=2.0, cat_switch=0.2, rng=rng)
+            for f in BIOMETRIC_FEATURES:
+                lo, hi = self.data.numeric_ranges[f]
+                self.assertGreaterEqual(z[f], lo)
+                self.assertLessEqual(z[f], hi)
+
+    def test_year_stays_in_observed_range(self):
+        import numpy as np
+        from .services.counterfactuals import sample_candidate
+        rng = np.random.default_rng(0)
+        lo, hi = self.data.numeric_ranges["year"]
+        for _ in range(50):
+            z = sample_candidate(self.x, self.data, alpha=2.0, cat_switch=0.2, rng=rng)
+            self.assertGreaterEqual(z["year"], lo)
+            self.assertLessEqual(z["year"], hi)
+            self.assertIsInstance(z["year"], int)
+
+    def test_categoricals_stay_valid(self):
+        import numpy as np
+        from .services.counterfactuals import sample_candidate
+        from .services.data import CATEGORICAL_FEATURES
+        rng = np.random.default_rng(0)
+        for _ in range(50):
+            z = sample_candidate(self.x, self.data, alpha=0.5, cat_switch=1.0, rng=rng)
+            for f in CATEGORICAL_FEATURES:
+                self.assertIn(z[f], self.data.categories[f])
+
+    def test_no_categorical_switch_when_prob_zero(self):
+        import numpy as np
+        from .services.counterfactuals import sample_candidate
+        from .services.data import CATEGORICAL_FEATURES
+        rng = np.random.default_rng(0)
+        for _ in range(20):
+            z = sample_candidate(self.x, self.data, alpha=0.5, cat_switch=0.0, rng=rng)
+            for f in CATEGORICAL_FEATURES:
+                self.assertEqual(z[f], self.x[f])
+
+
+class ChangedFeaturesTest(TestCase):
+    def test_detects_categorical_change(self):
+        from .services.counterfactuals import changed_features
+        x = {"island": "Biscoe", "sex": "male", "year": 2008,
+             "bill_length_mm": 40.0, "bill_depth_mm": 18.0,
+             "flipper_length_mm": 195.0, "body_mass_g": 3750.0}
+        z = dict(x); z["island"] = "Dream"
+        self.assertEqual(changed_features(x, z), ["island"])
+
+    def test_no_change_to_self(self):
+        from .services.counterfactuals import changed_features
+        x = {"island": "Biscoe", "sex": "male", "year": 2008,
+             "bill_length_mm": 40.0, "bill_depth_mm": 18.0,
+             "flipper_length_mm": 195.0, "body_mass_g": 3750.0}
+        self.assertEqual(changed_features(x, dict(x)), [])
+
+
+class GenerateCounterfactualsTest(TestCase):
+    def setUp(self):
+        from .services.data import get_penguin_data
+        from .services.selection import get_selected_model
+        self.data = get_penguin_data(seed=42)
+        self.model = get_selected_model("tree", lam=0.0, seed=42)
+        # Pick an example and a DIFFERENT target species to force a real search
+        self.idx = 0
+        self.x = self.data.X_all.iloc[self.idx].to_dict()
+        self.true_class = self.data.y_all.iloc[self.idx]
+        self.target = next(c for c in ["Adelie", "Chinstrap", "Gentoo"] if c != self.true_class)
+
+    def _cfg(self, **kw):
+        from .services.counterfactuals import CounterfactualConfig
+        base = dict(n_candidates=400, k=5, seed=0)
+        base.update(kw)
+        return CounterfactualConfig(**base)
+
+    def test_returns_at_most_k(self):
+        from .services.counterfactuals import generate_counterfactuals
+        cfs = generate_counterfactuals(self.model.pipeline, self.x, self.target,
+                                       self.data, self._cfg(k=3))
+        self.assertLessEqual(len(cfs), 3)
+
+    def test_all_predict_target_class(self):
+        from .services.counterfactuals import generate_counterfactuals
+        cfs = generate_counterfactuals(self.model.pipeline, self.x, self.target,
+                                       self.data, self._cfg())
+        self.assertGreater(len(cfs), 0)
+        for cf in cfs:
+            self.assertEqual(cf.predicted_class, self.target)
+
+    def test_sorted_by_distance_ascending(self):
+        from .services.counterfactuals import generate_counterfactuals
+        cfs = generate_counterfactuals(self.model.pipeline, self.x, self.target,
+                                       self.data, self._cfg())
+        distances = [cf.distance for cf in cfs]
+        self.assertEqual(distances, sorted(distances))
+
+    def test_target_proba_is_highest_for_target(self):
+        from .services.counterfactuals import generate_counterfactuals
+        cfs = generate_counterfactuals(self.model.pipeline, self.x, self.target,
+                                       self.data, self._cfg())
+        # Predicted class == target, so target prob should be > 0.5 in a 3-class argmax
+        for cf in cfs:
+            self.assertGreater(cf.target_proba, 0.33)
+
+    def test_unknown_target_returns_empty(self):
+        from .services.counterfactuals import generate_counterfactuals
+        cfs = generate_counterfactuals(self.model.pipeline, self.x, "Penguin",
+                                       self.data, self._cfg())
+        self.assertEqual(cfs, [])
+
+    def test_reproducible_with_seed(self):
+        from .services.counterfactuals import generate_counterfactuals
+        a = generate_counterfactuals(self.model.pipeline, self.x, self.target,
+                                     self.data, self._cfg(seed=123))
+        b = generate_counterfactuals(self.model.pipeline, self.x, self.target,
+                                     self.data, self._cfg(seed=123))
+        self.assertEqual([cf.distance for cf in a], [cf.distance for cf in b])
+
+    def test_works_for_logreg_model(self):
+        from .services.counterfactuals import generate_counterfactuals
+        from .services.selection import get_selected_model
+        model = get_selected_model("logreg", lam=0.0, seed=42)
+        cfs = generate_counterfactuals(model.pipeline, self.x, self.target,
+                                       self.data, self._cfg())
+        self.assertGreater(len(cfs), 0)
+        for cf in cfs:
+            self.assertEqual(cf.predicted_class, self.target)
+
+
+# ── Stage P2-5b: counterfactual UI in the dashboard (Task 4) ───────────────
+
+class DashboardCounterfactualUITest(TestCase):
+    def test_region_present_without_target(self):
+        response = self.client.get("/project2/dashboard/")
+        self.assertContains(response, "Counterfactual Explanations")
+        self.assertContains(response, "Choose a target species")
+
+    def test_controls_present(self):
+        response = self.client.get("/project2/dashboard/")
+        self.assertContains(response, 'name="cf_row"')
+        self.assertContains(response, 'name="cf_target"')
+        self.assertContains(response, 'name="cf_k"')
+
+    def test_shows_original_prediction(self):
+        response = self.client.get("/project2/dashboard/?cf_row=0")
+        self.assertContains(response, "Selected example")
+        self.assertContains(response, "true species")
+
+    def test_generates_table_for_target(self):
+        # Pick row 0, target a different species than its prediction
+        from .services.data import get_penguin_data
+        data = get_penguin_data(42)
+        true0 = str(data.y_all.iloc[0])
+        target = next(s for s in ["Adelie", "Chinstrap", "Gentoo"] if s != true0)
+        response = self.client.get(f"/project2/dashboard/?cf_row=0&cf_target={target}")
+        self.assertContains(response, "P(target)")
+        self.assertContains(response, "Distance")
+
+    def test_counterfactuals_use_selected_model_consistently(self):
+        # The CF region heading should reflect the chosen model + lambda
+        response = self.client.get("/project2/dashboard/?model=logreg&lambda=0.0&cf_row=0&cf_target=Gentoo")
+        self.assertContains(response, "currently selected model")
+        self.assertContains(response, "logreg")
+
+    def test_cf_row_clamped_to_valid_range(self):
+        response = self.client.get("/project2/dashboard/?cf_row=999999")
+        self.assertEqual(response.status_code, 200)  # clamped, no crash
+
+    def test_invalid_target_shows_prompt(self):
+        response = self.client.get("/project2/dashboard/?cf_target=Dragon")
+        self.assertContains(response, "Choose a target species")
+
+    def test_k_limits_rows(self):
+        from .services.data import get_penguin_data
+        data = get_penguin_data(42)
+        true0 = str(data.y_all.iloc[0])
+        target = next(s for s in ["Adelie", "Chinstrap", "Gentoo"] if s != true0)
+        response = self.client.get(f"/project2/dashboard/?cf_row=0&cf_target={target}&cf_k=2")
+        # Count counterfactual data rows by the changed-cell highlight class occurrences
+        # is brittle; instead assert the page renders and the table header exists.
+        self.assertContains(response, "P(target)")

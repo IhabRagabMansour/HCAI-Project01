@@ -230,3 +230,76 @@
     max-width: 680px;
     margin: 0 auto;
 }
+
+/* ── Horizontal scroll wrapper for wide tables ── */
+.p2-table-scroll {
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+/* ── Sub-title ── */
+.p2-subtitle {
+    text-align: center;
+    font-size: 18px;
+    color: #333;
+    margin: 18px 0 6px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* ── Coefficient table ── */
+.p2-coef-table td {
+    font-variant-numeric: tabular-nums;
+}
+
+.p2-coef-feature {
+    text-align: left !important;
+}
+
+.p2-coef-nz {
+    background-color: #e7f3ff;
+    color: #1e4a9a;
+    font-weight: 600;
+}
+
+.p2-coef-zero {
+    color: #bbb;
+}
+
+.p2-coef-allzero td {
+    opacity: 0.55;
+}
+
+.p2-coef-intercept {
+    border-top: 2px solid #275CB2;
+    font-style: italic;
+    color: #555;
+}
+
+.p2-coef-intercept td {
+    background-color: #fafbfd;
+}
+
+/* ── Counterfactual region ── */
+.p2-cf-controls {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+.p2-cf-table {
+    font-size: 13px;
+}
+
+.p2-cf-table th,
+.p2-cf-table td {
+    padding: 6px 8px;
+    white-space: nowrap;
+}
+
+.p2-cf-changed {
+    background-color: #fff3cd;
+    font-weight: 600;
+    color: #856404;
+}

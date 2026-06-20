@@ -21,4 +21,11 @@
     if (modelSelect) {
         modelSelect.addEventListener("change", () => form.submit());
     }
+
+    // Counterfactual controls (associated with this form via the form= attribute)
+    // also auto-submit so every panel stays consistent with the selected model.
+    ["cf_row", "cf_target", "cf_k"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener("change", () => form.submit());
+    });
 })();
