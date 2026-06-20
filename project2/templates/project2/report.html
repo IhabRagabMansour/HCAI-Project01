@@ -76,23 +76,26 @@
 </div>
 
 <div class="p2-section">
-    <h2 class="p2-section-title">13. Assumption about the selection formula</h2>
+    <h2 class="p2-section-title">13. The selection formula</h2>
     <p class="p2-report">
-        The project sheet writes the criterion as
-        <code>acc_test + &lambda;&middot;&Omega;</code>, to be <em>minimized</em>.
-        That is mathematically inconsistent: since higher accuracy is better,
-        minimizing it would punish accurate models. We therefore implement the
-        principled, lecture-consistent version (minimize penalized empirical
-        <em>loss</em>):
+        The project sheet defines the criterion as the <strong>maximizer</strong> of
     </p>
-    <pre class="p2-tree-text">score = (1 - acc_test) + lambda * Omega        # minimized</pre>
+    <pre class="p2-tree-text">score = acc_test - lambda * Omega        # maximized</pre>
     <p class="p2-report">
-        At &lambda;=0 this picks the most accurate model; as &lambda; grows, simpler
-        models win. The literal-sheet variant is kept as a documented comment in
-        <code>services/selection.py</code>. (Concretely on this data: &lambda;=0
-        selects an 8-leaf tree at 97% accuracy; &lambda;&ge;0.01 selects the 3-leaf
-        tree at 94% — the 3-class floor. The 2-leaf stump is never selected because
-        it cannot separate three species.)
+        which we implement directly in <code>services/selection.py</code>
+        (<code>select_best</code> returns the grid entry with the highest score).
+        At &lambda;=0 this picks the most accurate model; as &lambda; grows, the
+        complexity term dominates and progressively simpler models win. Ties are
+        broken toward the simpler model.
+    </p>
+    <p class="p2-report">
+        (Equivalently, this is the same as minimizing
+        <code>(1 &minus; acc_test) + &lambda;&middot;&Omega;</code> &mdash; the two
+        differ only by the additive constant 1, so they always select the same
+        model.) Concretely on this data: &lambda;=0 selects an 8-leaf tree at 97%
+        accuracy; &lambda;&ge;0.01 selects the 3-leaf tree at 94% &mdash; the 3-class
+        floor. The 2-leaf stump is never selected because it cannot separate three
+        species.
     </p>
 </div>
 

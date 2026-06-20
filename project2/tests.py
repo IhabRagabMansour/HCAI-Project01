@@ -247,14 +247,14 @@ class DecisionTreeViewTest(TestCase):
 # ── Stage P2-3: lambda selection + dashboard (Task 2) ──────────────────────
 
 class SelectionScoreTest(TestCase):
-    def test_score_is_error_plus_penalty(self):
+    def test_score_is_accuracy_minus_penalty(self):
         from .services.selection import selection_score
-        # (1 - 0.9) + 0.01 * 5 = 0.1 + 0.05 = 0.15
-        self.assertAlmostEqual(selection_score(0.9, 5, 0.01), 0.15)
+        # acc - lambda*Omega = 0.9 - 0.01*5 = 0.9 - 0.05 = 0.85  (maximized)
+        self.assertAlmostEqual(selection_score(0.9, 5, 0.01), 0.85)
 
-    def test_lambda_zero_is_pure_error(self):
+    def test_lambda_zero_is_pure_accuracy(self):
         from .services.selection import selection_score
-        self.assertAlmostEqual(selection_score(0.95, 20, 0.0), 0.05)
+        self.assertAlmostEqual(selection_score(0.95, 20, 0.0), 0.95)
 
 
 class SelectBestTest(TestCase):
@@ -335,6 +335,18 @@ class GetSelectedModelTest(TestCase):
         self.assertEqual(normalize_model_class("logreg"), "logreg")
         self.assertEqual(normalize_model_class("bogus"), "tree")
         self.assertEqual(normalize_model_class(None), "tree")
+
+    def test_selected_is_argmax_of_acc_minus_lambda_omega(self):
+        # Lock in the official Task 2 criterion: maximize acc_test - lambda*Omega.
+        from .services.grids import get_grid
+        from .services.selection import get_selected_model
+        for model in ("tree", "logreg"):
+            grid = get_grid(model, seed=42)
+            for lam in (0.0, 0.005, 0.01, 0.02, 0.05):
+                sel = get_selected_model(model, lam, seed=42)
+                best_score = max(e.test_accuracy - lam * e.complexity for e in grid)
+                sel_score = sel.test_accuracy - lam * sel.complexity
+                self.assertAlmostEqual(sel_score, best_score, places=9)
 
 
 class DashboardViewTest(TestCase):
@@ -938,7 +950,7 @@ class ReportViewTest(TestCase):
             "Logistic-regression regularization grid",
             "complexity measure",
             "How &lambda; selects",
-            "Assumption about the selection formula",
+            "The selection formula",
             "Counterfactual sampling",
             "MAD-weighted L1 distance",
             "Manual PDP",
@@ -953,9 +965,9 @@ class ReportViewTest(TestCase):
         self.assertContains(response, "0.01")   # logreg C grid
         self.assertContains(response, "None")   # tree grid includes unconstrained
 
-    def test_documents_lambda_formula_deviation(self):
+    def test_documents_lambda_formula(self):
         response = self.client.get("/project2/report/")
-        self.assertContains(response, "(1 - acc_test) + lambda * Omega")
+        self.assertContains(response, "acc_test - lambda * Omega")
 
     def test_nav_links_to_report(self):
         response = self.client.get("/project2/dashboard/")

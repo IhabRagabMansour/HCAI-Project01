@@ -7,17 +7,17 @@ display, counterfactuals, PDP, ALE) derives from, which is what guarantees the
 
 On the selection score
 ----------------------
-The project sheet literally writes the criterion as ``acc_test + lambda*Omega``,
-to be *minimized*. That is mathematically inconsistent: since higher accuracy is
-better, minimizing it would punish good models. We therefore implement the
-principled, lecture-consistent version (Lecture 1: minimize penalized empirical
-*loss*):
+The (updated) project sheet defines the criterion as the **maximizer** of
 
-    score = (1 - acc_test) + lambda * Omega        # minimize
+    score = acc_test - lambda * Omega              # maximize
 
 At ``lambda = 0`` this picks the most accurate model (ties broken toward the
 simpler one); as ``lambda`` grows, complexity is penalized and progressively
-simpler models win. The literal-sheet variant is kept as a documented comment.
+simpler models win.
+
+Note this is exactly equivalent to minimizing ``(1 - acc_test) + lambda*Omega``
+(the two differ only by the additive constant 1), so the selected model is the
+same either way.
 """
 
 from __future__ import annotations
@@ -37,21 +37,20 @@ MODEL_CLASSES = [("tree", "Decision Tree"), ("logreg", "Logistic Regression")]
 
 
 def selection_score(test_acc: float, complexity: int, lam: float) -> float:
-    """Principled accuracy/complexity tradeoff score (lower is better)."""
-    return (1.0 - test_acc) + lam * complexity
-    # Literal-sheet variant (documented; not used):
-    #   return test_acc + lam * complexity
+    """Project-sheet accuracy/complexity tradeoff score: acc_test - lambda*Omega
+    (HIGHER is better; the interface shows the maximizer)."""
+    return test_acc - lam * complexity
 
 
 def select_best(grid, lam: float) -> ModelEntry:
-    """Return the grid entry minimizing the selection score. Ties are broken
+    """Return the grid entry MAXIMIZING the selection score. Ties are broken
     toward the *simpler* model, then the more accurate one."""
-    return min(
+    return max(
         grid,
         key=lambda e: (
             selection_score(e.test_accuracy, e.complexity, lam),
-            e.complexity,          # prefer simpler on ties
-            -e.test_accuracy,      # then more accurate
+            -e.complexity,         # prefer simpler on ties
+            e.test_accuracy,       # then more accurate
         ),
     )
 

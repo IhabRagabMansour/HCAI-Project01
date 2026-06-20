@@ -280,41 +280,30 @@ The project explicitly says that `lambda` is different from the parameter used t
 
 ### Required model selection logic
 
-For every trained tree model `g`, compute:
+**(Updated per the official project sheet.)** For every trained model `f`, compute:
 
 ```text
-model_selection_score = acc_test + lambda * Omega(g)
+model_selection_score = acc_test - lambda * Omega(f)
 ```
 
 where:
 
 - `acc_test` is the model test accuracy
-- `Omega(g)` is the number of leaves
+- `Omega(f)` is the complexity (number of leaves for a tree)
 - `lambda` comes from the interface slider
 
-The interface must display the model corresponding to the minimizer of this quantity.
+The interface must display the model corresponding to the **maximizer** of this quantity.
 
-### Practical warning
+### Note
 
-The project sheet writes the selection criterion as:
+The official sheet uses `acc_test - lambda * Omega(f)`, maximized. This is the
+mathematically consistent accuracy/complexity tradeoff: higher accuracy raises the
+score, more complexity lowers it, and `lambda` controls the penalty.
 
-```text
-acc_test + lambda * Omega(g)
-```
-
-and says to minimize it. Since higher accuracy is better, this formula is unusual if `acc_test` really means accuracy. A mathematically consistent implementation would usually minimize:
-
-```text
-(1 - acc_test) + lambda * Omega(g)
-```
-
-or maximize:
-
-```text
-acc_test - lambda * Omega(g)
-```
-
-To be safe, mention this in your report or code comments. If the instructor expects the exact project formula, implement exactly what the sheet states. If you want the correct accuracy complexity tradeoff, use test error instead of test accuracy.
+It is exactly equivalent to **minimizing** `(1 - acc_test) + lambda * Omega(f)`
+(the two differ only by the additive constant 1), so either form selects the same
+model. The implementation uses the sheet's form directly (`acc_test - lambda*Omega`,
+maximized) in `services/selection.py`.
 
 ## 4.4 Task 3 requirements: Logistic regression with model complexity
 
@@ -1056,31 +1045,16 @@ For every trained model store:
 - complexity value
 - trained pipeline or model object
 
-Then for the selected `lambda`, compute:
+Then for the selected `lambda`, compute the official score and select its
+**maximizer**:
 
 ```python
-score = test_error + lambda_value * complexity
+score = test_accuracy - lambda_value * complexity
+best_model = model_with_highest_score
 ```
 
-where:
-
-```python
-test_error = 1 - test_accuracy
-```
-
-If reproducing the exact project formula, compute:
-
-```python
-score = test_accuracy + lambda_value * complexity
-```
-
-Then select:
-
-```python
-best_model = model_with_lowest_score
-```
-
-Document which version you use.
+(Equivalently you may minimize `(1 - test_accuracy) + lambda_value * complexity`;
+both select the same model.)
 
 ## 16. Counterfactual implementation checklist
 
@@ -1188,7 +1162,7 @@ In the written explanation or comments, include:
 10. How ALE is computed manually.
 11. Why logistic regression has exact partial derivatives.
 12. Why decision trees require discretization or finite differences.
-13. Any assumptions made about the project formula `acc_test + lambda * Omega(g)`.
+13. The selection formula `acc_test - lambda * Omega(f)` (maximized), and any notes about it.
 
 ## 22. Minimal acceptance criteria
 
