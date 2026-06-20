@@ -213,9 +213,65 @@
     </table>
 </div>
 
+{# ── Region C: PDP & ALE feature-effect plots ───────────────────────────── #}
+<div class="p2-section" id="feature-effects"
+     data-model="{{ model_class }}" data-lambda="{{ lam }}"
+     data-pdp-url="{% url 'project2:pdp_data' %}"
+     data-ale-url="{% url 'project2:ale_data' %}">
+    <h2 class="p2-section-title">Feature Effect Plots (PDP &amp; ALE)</h2>
+    <p class="p2-hint">
+        Computed with the <strong>currently selected model</strong>
+        ({{ selected.entry.model_class }}, &lambda;={{ lam|floatformat:3 }}).
+        Each plot shows the effect of the chosen feature on the predicted
+        probability of all three species.
+    </p>
+
+    <div class="p2-cf-controls">
+        <div class="p2-control">
+            <label for="fe_feature">Feature</label>
+            <select id="fe_feature" class="p2-select">
+                {% for f in biometric_features %}
+                    <option value="{{ f }}"{% if f == fe_feature %} selected{% endif %}>{{ f }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="p2-control">
+            <label for="fe_n_grid">PDP grid points</label>
+            <input type="number" id="fe_n_grid" min="5" max="50" value="{{ fe_n_grid }}" class="p2-select">
+        </div>
+        <div class="p2-control">
+            <label for="fe_n_bins">ALE bins</label>
+            <input type="number" id="fe_n_bins" min="4" max="40" value="{{ fe_n_bins }}" class="p2-select">
+        </div>
+    </div>
+
+    <p id="fe-error" class="p2-chart-error" style="display:none; text-align:center; color:#721c24;"></p>
+
+    <h3 class="p2-subtitle">Partial Dependence (PDP)</h3>
+    <div class="p2-chart-wrap"><canvas id="pdp-chart"></canvas></div>
+
+    <h3 class="p2-subtitle">Accumulated Local Effects (ALE)</h3>
+    <div class="p2-chart-wrap"><canvas id="ale-chart"></canvas></div>
+
+    <div class="p2-msg p2-msg--info" style="margin-top:16px;">
+        <strong>Exact vs. approximate derivatives.</strong>
+        <em>Logistic regression</em> is differentiable, so its partial
+        derivatives are exact:
+        &part;p<sub>c</sub>/&part;x<sub>j</sub> = p<sub>c</sub>(&beta;<sub>cj</sub> &minus; &sum;<sub>r</sub> p<sub>r</sub>&beta;<sub>rj</sub>).
+        A <em>decision tree</em> is piecewise-constant &mdash; its derivative is
+        zero almost everywhere and undefined at split thresholds &mdash; so ALE
+        must use <strong>finite differences</strong> (discretization), which is
+        what this implementation does for both models.
+        PDP averages over the marginal distribution (and may probe unrealistic
+        feature combinations); ALE uses local differences within bins of the
+        conditional distribution, avoiding that extrapolation.
+    </div>
+</div>
+
 {{ frontier_payload|json_script:"frontier-data" }}
 <script src="{% static 'project2/lib/chart.umd.min.js' %}"></script>
 <script src="{% static 'project2/frontier_chart.js' %}"></script>
+<script src="{% static 'project2/feature_effects_chart.js' %}"></script>
 <script src="{% static 'project2/dashboard_controls.js' %}"></script>
 
 {% endblock %}

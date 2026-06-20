@@ -7,4 +7,6 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("decision-tree/", views.decision_tree, name="decision_tree"),
     path("dashboard/", views.dashboard, name="dashboard"),
+    path("pdp/", views.pdp_data, name="pdp_data"),
+    path("ale/", views.ale_data, name="ale_data"),
 ]

@@ -1,10 +1,12 @@
 import pandas as pd
+from django.http import JsonResponse
 from django.shortcuts import render
 
 from .services.data import (
     get_penguin_data, SPECIES_ORDER, INPUT_FEATURES,
     NUMERIC_FEATURES, CATEGORICAL_FEATURES, BIOMETRIC_FEATURES,
 )
+from .services.feature_effects import compute_pdp, compute_ale
 from .services.grids import unconstrained_tree_entry, get_grid
 from .services.treeviz import tree_to_png_base64, tree_to_text
 from .services.coefs import coefficient_table
@@ -176,8 +178,18 @@ def dashboard(request):
         "x_pred_class": x_pred_class,
         "original_cells": original_cells,
         "cf_table": cf_table,
+        # Region C: PDP / ALE
+        "biometric_features": BIOMETRIC_FEATURES,
+        "fe_feature": _fe_feature(request.GET.get("fe_feature")),
+        "fe_n_grid": _parse_int(request.GET.get("fe_n_grid"), default=25, lo=5, hi=50),
+        "fe_n_bins": _parse_int(request.GET.get("fe_n_bins"), default=20, lo=4, hi=40),
     }
     return render(request, "project2/dashboard.html", context)
+
+
+def _fe_feature(value):
+    """Validate the PDP/ALE feature, defaulting to the first biometric one."""
+    return value if value in BIOMETRIC_FEATURES else BIOMETRIC_FEATURES[0]
 
 
 def _parse_int(value, default, lo, hi):
@@ -186,3 +198,35 @@ def _parse_int(value, default, lo, hi):
     except (TypeError, ValueError):
         return default
     return max(lo, min(hi, v))
+
+
+def _selected_from_request(request):
+    """Rebuild the active model from the request's query params — the shared
+    consistency entry point used by the PDP/ALE endpoints."""
+    model_class = normalize_model_class(request.GET.get("model"))
+    lam = clamp_lambda(request.GET.get("lambda", LAMBDA_DEFAULT))
+    return get_selected_model(model_class, lam, DEFAULT_SEED), model_class, lam
+
+
+def pdp_data(request):
+    """JSON endpoint: PDP curves for the selected model + feature."""
+    feature = request.GET.get("feature", "")
+    if feature not in BIOMETRIC_FEATURES:
+        return JsonResponse({"error": "Invalid feature."}, status=400)
+    n_grid = _parse_int(request.GET.get("n_grid"), default=25, lo=5, hi=50)
+
+    selected, _model_class, _lam = _selected_from_request(request)
+    data = get_penguin_data(DEFAULT_SEED)
+    return JsonResponse(compute_pdp(selected.pipeline, data.X_all, feature, n_grid))
+
+
+def ale_data(request):
+    """JSON endpoint: ALE curves for the selected model + feature."""
+    feature = request.GET.get("feature", "")
+    if feature not in BIOMETRIC_FEATURES:
+        return JsonResponse({"error": "Invalid feature."}, status=400)
+    n_bins = _parse_int(request.GET.get("n_bins"), default=20, lo=4, hi=40)
+
+    selected, _model_class, _lam = _selected_from_request(request)
+    data = get_penguin_data(DEFAULT_SEED)
+    return JsonResponse(compute_ale(selected.pipeline, data.X_all, feature, n_bins))

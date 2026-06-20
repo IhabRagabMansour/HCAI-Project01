@@ -684,3 +684,185 @@ class DashboardCounterfactualUITest(TestCase):
         # Count counterfactual data rows by the changed-cell highlight class occurrences
         # is brittle; instead assert the page renders and the table header exists.
         self.assertContains(response, "P(target)")
+
+
+# ── Stage P2-6a: manual PDP + ALE service (Task 5) ─────────────────────────
+
+class ComputePdpTest(TestCase):
+    def setUp(self):
+        from .services.data import get_penguin_data
+        from .services.selection import get_selected_model
+        self.data = get_penguin_data(seed=42)
+        self.tree = get_selected_model("tree", lam=0.0, seed=42).pipeline
+        self.logreg = get_selected_model("logreg", lam=0.0, seed=42).pipeline
+
+    def test_shape_is_grid_by_classes(self):
+        from .services.feature_effects import compute_pdp
+        pdp = compute_pdp(self.tree, self.data.X_all, "bill_length_mm", n_grid=20)
+        self.assertEqual(len(pdp["grid"]), 20)
+        self.assertEqual(len(pdp["classes"]), 3)
+        self.assertEqual(len(pdp["curves"]), 20)
+        for row in pdp["curves"]:
+            self.assertEqual(len(row), 3)
+
+    def test_each_grid_row_sums_to_one(self):
+        from .services.feature_effects import compute_pdp
+        pdp = compute_pdp(self.tree, self.data.X_all, "flipper_length_mm", n_grid=15)
+        for row in pdp["curves"]:
+            self.assertAlmostEqual(sum(row), 1.0, places=6)
+
+    def test_grid_spans_observed_range(self):
+        from .services.feature_effects import compute_pdp
+        col = self.data.X_all["body_mass_g"]
+        pdp = compute_pdp(self.tree, self.data.X_all, "body_mass_g", n_grid=10)
+        self.assertAlmostEqual(pdp["grid"][0], float(col.min()), places=3)
+        self.assertAlmostEqual(pdp["grid"][-1], float(col.max()), places=3)
+
+    def test_works_for_logreg(self):
+        from .services.feature_effects import compute_pdp
+        pdp = compute_pdp(self.logreg, self.data.X_all, "bill_depth_mm", n_grid=12)
+        self.assertEqual(len(pdp["curves"]), 12)
+        for row in pdp["curves"]:
+            self.assertAlmostEqual(sum(row), 1.0, places=6)
+
+    def test_classes_match_species(self):
+        from .services.feature_effects import compute_pdp
+        pdp = compute_pdp(self.tree, self.data.X_all, "bill_length_mm", n_grid=5)
+        self.assertEqual(sorted(pdp["classes"]), ["Adelie", "Chinstrap", "Gentoo"])
+
+
+class ComputeAleTest(TestCase):
+    def setUp(self):
+        from .services.data import get_penguin_data
+        from .services.selection import get_selected_model
+        self.data = get_penguin_data(seed=42)
+        self.tree = get_selected_model("tree", lam=0.0, seed=42).pipeline
+        self.logreg = get_selected_model("logreg", lam=0.0, seed=42).pipeline
+
+    def test_shape_is_bins_by_classes(self):
+        from .services.feature_effects import compute_ale
+        ale = compute_ale(self.tree, self.data.X_all, "bill_length_mm", n_bins=15)
+        self.assertEqual(len(ale["classes"]), 3)
+        self.assertEqual(len(ale["centers"]), len(ale["curves"]))
+        for row in ale["curves"]:
+            self.assertEqual(len(row), 3)
+
+    def test_data_weighted_mean_is_zero(self):
+        import numpy as np
+        from .services.feature_effects import compute_ale
+        ale = compute_ale(self.logreg, self.data.X_all, "flipper_length_mm", n_bins=12)
+        curves = np.array(ale["curves"])          # (B, 3)
+        counts = np.array(ale["bin_counts"])      # (B,)
+        weighted = (counts[:, None] * curves).sum(axis=0) / counts.sum()
+        for w in weighted:
+            self.assertAlmostEqual(w, 0.0, places=6)
+
+    def test_centers_are_ascending(self):
+        from .services.feature_effects import compute_ale
+        ale = compute_ale(self.tree, self.data.X_all, "body_mass_g", n_bins=10)
+        self.assertEqual(ale["centers"], sorted(ale["centers"]))
+
+    def test_bin_counts_sum_to_n_rows(self):
+        # Half-open bins must partition the data: no double-count, no drops.
+        from .services.feature_effects import compute_ale
+        ale = compute_ale(self.tree, self.data.X_all, "bill_depth_mm", n_bins=20)
+        self.assertEqual(sum(ale["bin_counts"]), len(self.data.X_all))
+
+    def test_works_for_logreg(self):
+        from .services.feature_effects import compute_ale
+        ale = compute_ale(self.logreg, self.data.X_all, "bill_length_mm", n_bins=15)
+        self.assertEqual(len(ale["classes"]), 3)
+        self.assertGreater(len(ale["curves"]), 0)
+
+    def test_no_library_pdp_ale_import(self):
+        # The implementation must be manual — no sklearn.inspection / ALE libs.
+        import pathlib
+        src = pathlib.Path(__file__).resolve().parent / "services" / "feature_effects.py"
+        text = src.read_text()
+        self.assertNotIn("partial_dependence", text)
+        self.assertNotIn("inspection", text)
+        self.assertNotIn("PartialDependenceDisplay", text)
+        self.assertNotIn("import alepython", text)
+
+
+# ── Stage P2-6b: PDP/ALE endpoints + dashboard Region C (Task 5) ───────────
+
+class PdpAleEndpointTest(TestCase):
+    def test_pdp_returns_three_curves(self):
+        import json
+        response = self.client.get("/project2/pdp/?model=tree&lambda=0.0&feature=bill_length_mm&n_grid=15")
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(len(data["classes"]), 3)
+        self.assertEqual(len(data["grid"]), 15)
+        self.assertEqual(len(data["curves"]), 15)
+        self.assertEqual(len(data["curves"][0]), 3)
+
+    def test_ale_returns_three_curves(self):
+        import json
+        response = self.client.get("/project2/ale/?model=tree&lambda=0.0&feature=flipper_length_mm&n_bins=12")
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(len(data["classes"]), 3)
+        self.assertEqual(len(data["centers"]), len(data["curves"]))
+        self.assertEqual(len(data["curves"][0]), 3)
+
+    def test_pdp_works_for_logreg(self):
+        import json
+        response = self.client.get("/project2/pdp/?model=logreg&lambda=0.0&feature=bill_depth_mm")
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(len(data["classes"]), 3)
+
+    def test_invalid_feature_rejected(self):
+        self.assertEqual(self.client.get("/project2/pdp/?feature=bogus").status_code, 400)
+        self.assertEqual(self.client.get("/project2/ale/?feature=bogus").status_code, 400)
+
+    def test_year_is_not_a_valid_feature(self):
+        # year must not be selectable for PDP/ALE (sheet common mistake #21)
+        self.assertEqual(self.client.get("/project2/pdp/?feature=year").status_code, 400)
+        self.assertEqual(self.client.get("/project2/ale/?feature=year").status_code, 400)
+
+    def test_pdp_differs_between_models(self):
+        import json
+        tree = json.loads(self.client.get(
+            "/project2/pdp/?model=tree&lambda=0.0&feature=bill_length_mm&n_grid=10").content)
+        logreg = json.loads(self.client.get(
+            "/project2/pdp/?model=logreg&lambda=0.0&feature=bill_length_mm&n_grid=10").content)
+        # Different model families should produce different PDP curves
+        self.assertNotEqual(tree["curves"], logreg["curves"])
+
+    def test_n_grid_clamped(self):
+        import json
+        data = json.loads(self.client.get(
+            "/project2/pdp/?feature=body_mass_g&n_grid=99999").content)
+        self.assertLessEqual(len(data["grid"]), 50)
+
+
+class DashboardFeatureEffectsUITest(TestCase):
+    def test_region_present(self):
+        response = self.client.get("/project2/dashboard/")
+        self.assertContains(response, "Feature Effect Plots")
+        self.assertContains(response, 'id="pdp-chart"')
+        self.assertContains(response, 'id="ale-chart"')
+
+    def test_feature_selector_only_biometric(self):
+        response = self.client.get("/project2/dashboard/")
+        for f in ["bill_length_mm", "bill_depth_mm", "flipper_length_mm", "body_mass_g"]:
+            self.assertContains(response, f'value="{f}"')
+        # year must NOT be a PDP/ALE option
+        self.assertNotContains(response, 'value="year"')
+
+    def test_derivative_info_box_present(self):
+        response = self.client.get("/project2/dashboard/")
+        self.assertContains(response, "Exact vs. approximate derivatives")
+        self.assertContains(response, "finite differences")
+
+    def test_loads_feature_effects_script(self):
+        response = self.client.get("/project2/dashboard/")
+        self.assertContains(response, "feature_effects_chart.js")
+
+    def test_region_carries_model_and_lambda(self):
+        response = self.client.get("/project2/dashboard/?model=logreg&lambda=0.02")
+        self.assertContains(response, 'data-model="logreg"')
+        self.assertContains(response, 'data-lambda="0.02"')
