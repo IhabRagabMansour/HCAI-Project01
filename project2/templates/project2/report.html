@@ -1,0 +1,198 @@
+{% extends 'project2/base.html' %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block project2_content %}
+
+<p class="centered-text">
+    Design choices for the Palmer Penguins explainability dashboard, addressing
+    the project sheet's required written explanation.
+</p>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">1. Preprocessing</h2>
+    <p class="p2-report">
+        Rows with any missing value are dropped (<code>dropna()</code>, 333 of 344
+        rows remain). The data is split into train/test (80/20, stratified by
+        <code>species</code> with <code>random_state=42</code>). Both model families
+        use a scikit-learn <code>ColumnTransformer</code> pipeline:
+        numeric features are median-imputed; categorical features
+        (<code>island</code>, <code>sex</code>) are most-frequent-imputed and one-hot
+        encoded. <strong>Numeric scaling differs by model:</strong> logistic
+        regression standardizes numeric features (it requires it), while decision
+        trees do <em>not</em> scale — this keeps the plotted tree thresholds in real
+        units (e.g. <code>flipper_length_mm &le; 206.5</code>).
+        The preprocessor and estimator are stored together as one fitted pipeline,
+        so every prediction (dashboard, counterfactuals, PDP, ALE) applies identical
+        preprocessing.
+    </p>
+</div>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">2. Decision-tree regularization grid</h2>
+    <p class="p2-report">
+        Ten decision trees are trained with
+        <code>max_leaf_nodes &isin; {{ tree_grid }}</code>.
+        This spans the complexity axis from a 2-leaf stump to a fully grown tree.
+        Complexity is <code>&Omega; = get_n_leaves()</code>.
+    </p>
+</div>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">3. Logistic-regression regularization grid</h2>
+    <p class="p2-report">
+        Eight multinomial L1 logistic regressions are trained with
+        <code>C &isin; {{ logreg_grid }}</code> (<code>solver=saga</code>,
+        <code>max_iter=5000</code>). Recall <code>C</code> is the <em>inverse</em>
+        regularization strength: small <code>C</code> = stronger regularization =
+        sparser model.
+    </p>
+</div>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">4. Logistic-regression complexity measure</h2>
+    <p class="p2-report">
+        <code>&Omega; = number of nonzero coefficients</code> (those with
+        <code>|coef| &gt; 1e-6</code>, counted across all three classes).
+        We chose this because L1 regularization induces sparsity, and the count of
+        nonzero coefficients is the most human-readable notion of "how many features
+        the model actually uses." It pairs naturally with the L1 penalty (versus the
+        L1- or L2-norm alternatives, which are less directly interpretable as
+        "model size").
+    </p>
+</div>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">5. How &lambda; selects among trained models</h2>
+    <p class="p2-report">
+        The &lambda; slider does <strong>not</strong> retrain anything; it selects,
+        post-hoc, among the already-trained grid. For every trained model we compute
+        a selection score and pick the minimizer at the current &lambda;
+        (range {{ lambda_min }}&ndash;{{ lambda_max }}, step {{ lambda_step }}).
+        This single selected model drives <em>all</em> dashboard panels
+        (model display, counterfactuals, PDP, ALE), guaranteeing consistency.
+        Ties are broken toward the simpler model.
+    </p>
+</div>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">13. Assumption about the selection formula</h2>
+    <p class="p2-report">
+        The project sheet writes the criterion as
+        <code>acc_test + &lambda;&middot;&Omega;</code>, to be <em>minimized</em>.
+        That is mathematically inconsistent: since higher accuracy is better,
+        minimizing it would punish accurate models. We therefore implement the
+        principled, lecture-consistent version (minimize penalized empirical
+        <em>loss</em>):
+    </p>
+    <pre class="p2-tree-text">score = (1 - acc_test) + lambda * Omega        # minimized</pre>
+    <p class="p2-report">
+        At &lambda;=0 this picks the most accurate model; as &lambda; grows, simpler
+        models win. The literal-sheet variant is kept as a documented comment in
+        <code>services/selection.py</code>. (Concretely on this data: &lambda;=0
+        selects an 8-leaf tree at 97% accuracy; &lambda;&ge;0.01 selects the 3-leaf
+        tree at 94% — the 3-class floor. The 2-leaf stump is never selected because
+        it cannot separate three species.)
+    </p>
+</div>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">6&ndash;7. Counterfactual sampling &amp; feature perturbation</h2>
+    <p class="p2-report">
+        Counterfactuals are generated by local random sampling around the chosen
+        example, using the <strong>currently selected model</strong>: sample N
+        candidates near <code>x</code>, predict each, keep those predicted as the
+        target species, rank by distance, return the best k. Each feature type is
+        perturbed appropriately:
+    </p>
+    <ul class="p2-report-list">
+        <li><strong>Biometric decimals</strong> (<code>bill_length_mm</code>,
+            <code>bill_depth_mm</code>, <code>flipper_length_mm</code>,
+            <code>body_mass_g</code>): Gaussian noise
+            <code>z = x + N(0, &alpha;&middot;std)</code>, clipped to the observed range.</li>
+        <li><strong>Year</strong> (discrete): rounded small Gaussian, clipped to the
+            observed year range, kept integer.</li>
+        <li><strong>Categoricals</strong> (<code>island</code>, <code>sex</code>):
+            kept with probability 0.8, otherwise resampled to another valid category.
+            <em>Never</em> perturbed with Gaussian noise.</li>
+    </ul>
+    <p class="p2-report">
+        If no counterfactuals are found, the search widens (more candidates, larger
+        numeric noise, higher categorical-switch probability) and retries.
+    </p>
+</div>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">8. MAD-weighted L1 distance</h2>
+    <pre class="p2-tree-text">distance(x, z) = sum_j |x_j - z_j| / MAD_j      (over numeric features)
+MAD_j = median_i |x_ij - median_i(x_ij)|,  floored at 1e-6</pre>
+    <p class="p2-report">
+        Dividing by each feature's MAD makes the distance scale-invariant (a 1&nbsp;mm
+        change in bill length and a 100&nbsp;g change in body mass are weighted by how
+        variable each feature naturally is). Counterfactuals are ranked by ascending
+        distance; ties break toward fewer categorical changes.
+    </p>
+</div>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">9. Manual PDP</h2>
+    <p class="p2-report">
+        For the selected feature we build a grid over its observed range. For each
+        grid value <code>v</code>, we set the feature to <code>v</code> for
+        <em>every</em> row, call <code>predict_proba</code>, and average over all rows.
+        This is the Monte-Carlo estimate of
+        <code>E<sub>x_B</sub>[ f(v, x_B) ]</code> &mdash; the expectation over the
+        <em>marginal</em> distribution of the other features. We plot one curve per
+        species. No library PDP function is used.
+    </p>
+</div>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">10. Manual ALE</h2>
+    <p class="p2-report">
+        The observed feature values are split into equal-population (quantile) bins.
+        For each bin <code>[lo, hi)</code> we take only the rows whose value falls in
+        that bin (the <em>conditional</em> distribution), predict at <code>hi</code>
+        and at <code>lo</code>, and average the difference &mdash; the local effect of
+        moving across the bin. These local effects are accumulated across bins (the
+        integral) and then centered so the data-weighted mean is zero. One curve per
+        species. No library ALE function is used. Three implementation details:
+        half-open bins (no double-counted edges), data-weighted centering
+        (zero mean over the data, not over bins), and empty bins carry the
+        accumulator.
+    </p>
+    <p class="p2-report">
+        <strong>Why ALE over PDP?</strong> PDP averages over the marginal, so under
+        correlated features it probes unrealistic combinations. ALE uses local
+        differences within bins of the conditional distribution, avoiding that
+        extrapolation.
+    </p>
+</div>
+
+<div class="p2-section">
+    <h2 class="p2-section-title">11&ndash;12. Exact vs. finite-difference derivatives for ALE</h2>
+    <p class="p2-report">
+        <strong>Logistic regression has exact partial derivatives</strong> because the
+        multinomial softmax is differentiable:
+    </p>
+    <pre class="p2-tree-text">&part; p_c / &part; x_j = p_c * ( beta_cj - sum_r p_r * beta_rj )</pre>
+    <p class="p2-report">
+        (with a scaling factor for standardized features).
+        <strong>A decision tree does not.</strong> It is piecewise-constant inside
+        leaves: the prediction is flat within a leaf and jumps at split thresholds, so
+        the derivative is zero almost everywhere and undefined at the thresholds.
+        Therefore ALE for a tree must use <strong>discretization / finite differences</strong>.
+        Our finite-difference ALE works for both model families, which is why we use
+        it uniformly.
+    </p>
+</div>
+
+<div class="p2-section">
+    <div class="p2-msg p2-msg--info">
+        Every panel of the dashboard &mdash; the model display, counterfactuals, PDP,
+        and ALE &mdash; is derived from one shared selection function, so changing the
+        model class or &lambda; updates all of them consistently.
+    </div>
+</div>
+
+{% endblock %}

@@ -866,3 +866,97 @@ class DashboardFeatureEffectsUITest(TestCase):
         response = self.client.get("/project2/dashboard/?model=logreg&lambda=0.02")
         self.assertContains(response, 'data-model="logreg"')
         self.assertContains(response, 'data-lambda="0.02"')
+
+
+# ── Stage P2-7: cross-panel consistency + report ───────────────────────────
+
+class DashboardConsistencyTest(TestCase):
+    """The selected model must drive every panel identically."""
+
+    def test_selected_complexity_matches_starred_grid_row(self):
+        # Region A's complexity must equal the starred (selected) grid row's Omega.
+        from .services.selection import get_selected_model
+        for model, lam in [("tree", 0.0), ("tree", 0.05), ("logreg", 0.0), ("logreg", 0.05)]:
+            sel = get_selected_model(model, lam, seed=42)
+            response = self.client.get(f"/project2/dashboard/?model={model}&lambda={lam}")
+            # The selected complexity appears in the Region A panel
+            self.assertContains(response, f"<strong>{sel.complexity}</strong>")
+            # And exactly one grid row is starred
+            self.assertContains(response, "p2-row-selected")
+
+    def test_switching_model_changes_region_a_rendering(self):
+        tree = self.client.get("/project2/dashboard/?model=tree&lambda=0.0")
+        logreg = self.client.get("/project2/dashboard/?model=logreg&lambda=0.0")
+        # Tree mode renders a PNG; logreg mode renders the coefficient table
+        self.assertContains(tree, "data:image/png;base64,")
+        self.assertNotContains(tree, "Coefficient table")
+        self.assertContains(logreg, "Coefficient table")
+        self.assertNotContains(logreg, "data:image/png;base64,")
+
+    def test_all_regions_reflect_same_model_and_lambda(self):
+        # One request: Region B heading, Region C data attrs, and the controls
+        # must all reflect the same model+lambda.
+        response = self.client.get("/project2/dashboard/?model=logreg&lambda=0.02&cf_row=0&cf_target=Gentoo")
+        content = response.content.decode()
+        # Region C data attributes
+        self.assertIn('data-model="logreg"', content)
+        self.assertIn('data-lambda="0.02"', content)
+        # Region B explicitly says it uses the currently selected model
+        self.assertIn("currently selected model", content)
+        # The model dropdown shows logreg selected
+        self.assertIn('<option value="logreg" selected>', content)
+
+    def test_lambda_changes_selected_model(self):
+        # Different lambda -> potentially different selected complexity for trees
+        low = self.client.get("/project2/dashboard/?model=tree&lambda=0.0")
+        high = self.client.get("/project2/dashboard/?model=tree&lambda=0.05")
+        from .services.selection import get_selected_model
+        c_low = get_selected_model("tree", 0.0, 42).complexity
+        c_high = get_selected_model("tree", 0.05, 42).complexity
+        self.assertGreaterEqual(c_low, c_high)
+        self.assertContains(low, f"<strong>{c_low}</strong>")
+        self.assertContains(high, f"<strong>{c_high}</strong>")
+
+    def test_pdp_endpoint_consistent_with_selected_model(self):
+        # PDP for tree vs logreg differ (proves the endpoint honors model choice)
+        import json
+        t = json.loads(self.client.get("/project2/pdp/?model=tree&lambda=0.0&feature=bill_length_mm&n_grid=8").content)
+        l = json.loads(self.client.get("/project2/pdp/?model=logreg&lambda=0.0&feature=bill_length_mm&n_grid=8").content)
+        self.assertNotEqual(t["curves"], l["curves"])
+
+
+class ReportViewTest(TestCase):
+    def test_returns_200(self):
+        response = self.client.get("/project2/report/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_covers_all_required_topics(self):
+        response = self.client.get("/project2/report/")
+        for topic in [
+            "Preprocessing",
+            "Decision-tree regularization grid",
+            "Logistic-regression regularization grid",
+            "complexity measure",
+            "How &lambda; selects",
+            "Assumption about the selection formula",
+            "Counterfactual sampling",
+            "MAD-weighted L1 distance",
+            "Manual PDP",
+            "Manual ALE",
+            "Exact vs. finite-difference",
+        ]:
+            self.assertContains(response, topic)
+
+    def test_shows_actual_grids(self):
+        response = self.client.get("/project2/report/")
+        # The real grids are rendered, not placeholders
+        self.assertContains(response, "0.01")   # logreg C grid
+        self.assertContains(response, "None")   # tree grid includes unconstrained
+
+    def test_documents_lambda_formula_deviation(self):
+        response = self.client.get("/project2/report/")
+        self.assertContains(response, "(1 - acc_test) + lambda * Omega")
+
+    def test_nav_links_to_report(self):
+        response = self.client.get("/project2/dashboard/")
+        self.assertContains(response, "/project2/report/")

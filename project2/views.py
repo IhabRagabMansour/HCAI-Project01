@@ -32,6 +32,23 @@ def _fmt_value(feat, val):
     return f"{float(val):.1f}"
 
 
+def report(request):
+    """Written explanation of design choices (project sheet §21)."""
+    from .services.grids import TREE_MAX_LEAF_NODES_GRID, LOGREG_C_GRID
+    context = {
+        "title": "Project 2 — Design Report",
+        "tree_grid": ", ".join("None" if v is None else str(v) for v in TREE_MAX_LEAF_NODES_GRID),
+        "logreg_grid": ", ".join(str(v) for v in LOGREG_C_GRID),
+        "lambda_min": LAMBDA_MIN,
+        "lambda_max": LAMBDA_MAX,
+        "lambda_step": LAMBDA_STEP,
+        "biometric_features": BIOMETRIC_FEATURES,
+        "numeric_features": NUMERIC_FEATURES,
+        "categorical_features": CATEGORICAL_FEATURES,
+    }
+    return render(request, "project2/report.html", context)
+
+
 def index(request):
     data = get_penguin_data(DEFAULT_SEED)
     context = {
