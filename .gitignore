@@ -63,6 +63,10 @@ db.sqlite3-journal
 media/*
 !media/.gitkeep
 
+# Project 3 cached artifacts (AG News data + trained models/results)
+project3/data_cache/
+project3/artifacts/
+
 # Flask stuff:
 instance/
 .webassets-cache

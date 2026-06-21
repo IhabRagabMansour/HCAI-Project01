@@ -1,0 +1,66 @@
+{% extends 'project3/base.html' %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block project3_content %}
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Learning to Defer</h2>
+    <p class="p3-report">
+        This project builds a <strong>human&ndash;AI team</strong> for topic
+        classification of news articles. A classifier predicts the topic, but for
+        each article the system may instead <strong>defer</strong> the decision to a
+        (simulated) human expert. The goal is to learn <em>when</em> deferring is
+        beneficial &mdash; and, crucially, to learn this efficiently by
+        <strong>actively querying</strong> the expert only on the most informative
+        examples, since expert labels are expensive.
+    </p>
+    <ul class="p3-report-list">
+        <li><strong>Task 1 &mdash; Baseline classifier:</strong> train a text classifier on AG News.</li>
+        <li><strong>Task 2 &mdash; Simulated expert:</strong> an imperfect expert with region-specific competence.</li>
+        <li><strong>Task 3 &mdash; Learning to defer:</strong> decide per article whether to predict or defer.</li>
+        <li><strong>Task 4 &mdash; Active learning:</strong> query the expert efficiently to learn the deferral policy.</li>
+    </ul>
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Dataset: AG News</h2>
+    <table class="p3-detail-table">
+        <tr><th>Source</th><td><code>fancyzhx/ag_news</code> (HuggingFace)</td></tr>
+        <tr><th>Task</th><td>Topic classification of news articles</td></tr>
+        <tr><th>Training examples</th><td>{{ n_train }}</td></tr>
+        <tr><th>Test examples</th><td>{{ n_test }}</td></tr>
+        <tr><th>Classes ({{ n_classes }})</th><td>{{ class_names|join:", " }}</td></tr>
+    </table>
+    <p class="p3-hint">
+        The training split is used for training; the test split is used only for
+        evaluation, never for model selection or query selection.
+    </p>
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Class Distribution</h2>
+    <table class="p3-table">
+        <thead>
+            <tr><th>Class</th><th>Train</th><th>Test</th></tr>
+        </thead>
+        <tbody>
+            {% for row in dist_rows %}
+            <tr>
+                <td>{{ row.cls }}</td>
+                <td>{{ row.train }}</td>
+                <td>{{ row.test }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="p3-section">
+    <div class="p3-msg p3-msg--info">
+        The baseline classifier, simulated expert, learning-to-defer, and active
+        learning sections are being added in stages.
+    </div>
+</div>
+
+{% endblock %}

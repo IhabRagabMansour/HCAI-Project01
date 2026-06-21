@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block extra_css %}
+    <link rel="stylesheet" href="{% static 'project3/style.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="box p3-box">
+    <div class="title-container">
+        <div class="title">{% block page_title %}Project 3{% endblock %}</div>
+    </div>
+
+    <nav class="p3-nav">
+        <a href="{% url 'project3:index' %}">Overview</a>
+    </nav>
+
+    {% if messages %}
+    <ul class="p3-messages">
+        {% for message in messages %}
+            <li class="p3-msg p3-msg--{{ message.tags }}">{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <div class="main-text">
+        {% block project3_content %}{% endblock %}
+    </div>
+</div>
+{% endblock %}
