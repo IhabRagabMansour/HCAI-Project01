@@ -147,3 +147,36 @@
     max-width: 680px;
     margin: 0 auto;
 }
+
+/* ── Horizontal scroll for wide tables ── */
+.p3-table-scroll {
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+/* ── Confusion matrix ── */
+.p3-cm-table {
+    text-align: center;
+}
+
+.p3-cm-table th,
+.p3-cm-table td {
+    min-width: 64px;
+}
+
+.p3-cm-corner {
+    background-color: #f4f7fc !important;
+    color: #777 !important;
+    font-weight: normal !important;
+    font-size: 13px;
+}
+
+.p3-cm-cell {
+    font-variant-numeric: tabular-nums;
+}
+
+.p3-cm-diag {
+    outline: 2px solid #155724;
+    outline-offset: -2px;
+    font-weight: 700;
+}

@@ -1,0 +1,66 @@
+{% extends 'project3/base.html' %}
+{% load static %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block project3_content %}
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Baseline Classifier</h2>
+    <table class="p3-detail-table">
+        <tr><th>Model</th><td>{{ model_description }}</td></tr>
+        <tr><th>Training examples</th><td>{{ n_train }}</td></tr>
+        <tr><th>Test examples</th><td>{{ n_test }}</td></tr>
+        <tr><th>Test accuracy</th><td><strong>{{ accuracy|floatformat:4 }}</strong></td></tr>
+    </table>
+    <p class="p3-hint">
+        Logistic regression is used (rather than a linear SVM) so the classifier
+        exposes calibrated class probabilities, which the deferral and active-learning
+        stages rely on.
+    </p>
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Per-class Accuracy</h2>
+    <div class="p3-chart-wrap"><canvas id="perclass-chart"></canvas></div>
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Confusion Matrix (test set)</h2>
+    <div class="p3-table-scroll">
+        <table class="p3-table p3-cm-table">
+            <thead>
+                <tr>
+                    <th rowspan="2" class="p3-cm-corner">True &darr; / Pred &rarr;</th>
+                    <th colspan="{{ class_names|length }}">Predicted class</th>
+                </tr>
+                <tr>
+                    {% for cls in class_names %}<th>{{ cls }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in cm_rows %}
+                <tr>
+                    <th>{{ row.true_class }}</th>
+                    {% for cell in row.cells %}
+                        <td class="p3-cm-cell{% if cell.is_diag %} p3-cm-diag{% endif %}"
+                            style="background-color: rgba(39,92,178,{{ cell.frac }});{% if cell.frac > 0.5 %} color:white;{% endif %}">
+                            {{ cell.value }}
+                        </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="p3-hint">
+        Rows are the true class, columns the predicted class. The diagonal (correct
+        predictions) is outlined; cell shading scales with the row fraction.
+    </p>
+</div>
+
+{{ per_class_payload|json_script:"perclass-data" }}
+<script src="{% static 'project3/lib/chart.umd.min.js' %}"></script>
+<script src="{% static 'project3/baseline_chart.js' %}"></script>
+
+{% endblock %}

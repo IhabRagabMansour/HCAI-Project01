@@ -85,3 +85,78 @@ class HomePageProject3LinkTest(TestCase):
         response = self.client.get("/home/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Project 3")
+
+
+# ── Stage P3-2: baseline classifier (Task 1) ───────────────────────────────
+
+class BaselineServiceTest(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from .services.baseline import get_baseline_eval
+        cls.ev = get_baseline_eval()
+
+    def test_accuracy_is_strong(self):
+        self.assertGreater(self.ev["accuracy"], 0.85)
+        self.assertLessEqual(self.ev["accuracy"], 1.0)
+
+    def test_confusion_matrix_is_4x4(self):
+        cm = self.ev["confusion_matrix"]
+        self.assertEqual(len(cm), 4)
+        for row in cm:
+            self.assertEqual(len(row), 4)
+
+    def test_confusion_matrix_totals_match_test_size(self):
+        total = sum(sum(row) for row in self.ev["confusion_matrix"])
+        self.assertEqual(total, self.ev["n_test"])
+
+    def test_per_class_accuracy(self):
+        pca = self.ev["per_class_accuracy"]
+        self.assertEqual(len(pca), 4)
+        for a in pca:
+            self.assertGreaterEqual(a, 0.0)
+            self.assertLessEqual(a, 1.0)
+
+    def test_pipeline_predicts_proba(self):
+        import numpy as np
+        from .services.baseline import get_baseline
+        pipe = get_baseline()
+        proba = pipe.predict_proba([
+            "The team won the championship final last night in overtime.",
+            "Shares fell sharply as the central bank raised interest rates.",
+        ])
+        self.assertEqual(proba.shape, (2, 4))
+        np.testing.assert_allclose(proba.sum(axis=1), [1.0, 1.0], atol=1e-6)
+
+    def test_pipeline_predicts_sports_for_sports_text(self):
+        from .services.baseline import get_baseline
+        from .services.data import CLASS_NAMES
+        pipe = get_baseline()
+        pred = pipe.predict(["The football team scored a goal to win the match."])[0]
+        self.assertEqual(CLASS_NAMES[int(pred)], "Sports")
+
+
+class BaselineViewTest(TestCase):
+    def test_returns_200(self):
+        response = self.client.get("/project3/baseline/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_shows_model_and_accuracy(self):
+        response = self.client.get("/project3/baseline/")
+        self.assertContains(response, "TF-IDF")
+        self.assertContains(response, "Test accuracy")
+
+    def test_shows_confusion_matrix(self):
+        response = self.client.get("/project3/baseline/")
+        self.assertContains(response, "Confusion Matrix")
+        for cls in ["World", "Sports", "Business", "Sci/Tech"]:
+            self.assertContains(response, cls)
+
+    def test_has_perclass_chart(self):
+        response = self.client.get("/project3/baseline/")
+        self.assertContains(response, 'id="perclass-chart"')
+        self.assertContains(response, "baseline_chart.js")
+
+    def test_nav_links_to_baseline(self):
+        response = self.client.get("/project3/")
+        self.assertContains(response, "/project3/baseline/")
