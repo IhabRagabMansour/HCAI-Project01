@@ -1,0 +1,84 @@
+{% extends 'project3/base.html' %}
+{% load static %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block project3_content %}
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Simulated Expert</h2>
+    <table class="p3-detail-table">
+        <tr><th>Design</th><td>{{ description }}</td></tr>
+        <tr><th>Competence topics</th><td>{{ competence_topics|join:", " }}</td></tr>
+        <tr><th>Accuracy in competence region</th><td>{{ p_high|floatformat:2 }}</td></tr>
+        <tr><th>Accuracy elsewhere</th><td>{{ p_low|floatformat:2 }}</td></tr>
+        <tr><th>Overall test accuracy</th><td><strong>{{ overall_accuracy|floatformat:4 }}</strong></td></tr>
+    </table>
+    <p class="p3-hint">
+        The expert is imperfect and region-specific. Its competence region was chosen
+        to complement the classifier: it specializes in Business and Sci/Tech, exactly
+        the topics the baseline confuses.
+    </p>
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Expert vs. Classifier (per-class accuracy)</h2>
+    <div class="p3-chart-wrap"><canvas id="compare-chart"></canvas></div>
+    <p class="p3-hint">Where the orange bar exceeds the blue, deferring to the expert helps.</p>
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Strengths &amp; Weaknesses</h2>
+    <table class="p3-table">
+        <thead>
+            <tr><th>Class</th><th>Expert</th><th>Classifier</th><th>Expert better?</th><th>Competence region</th></tr>
+        </thead>
+        <tbody>
+            {% for c in comparison %}
+            <tr{% if c.expert_better %} class="p3-row-good"{% endif %}>
+                <td>{{ c.cls }}</td>
+                <td>{{ c.expert|floatformat:4 }}</td>
+                <td>{{ c.classifier|floatformat:4 }}</td>
+                <td>{% if c.expert_better %}✓ yes{% else %}no{% endif %}</td>
+                <td>{% if c.in_competence %}✓{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Where Deferring Helps</h2>
+    <p class="p3-hint">Expert correct, classifier wrong &mdash; good candidates to defer.</p>
+    {% for ex in good_examples %}
+    <div class="p3-example p3-example--good">
+        <div class="p3-example-text">{{ ex.text }}</div>
+        <div class="p3-example-meta">
+            true: <code>{{ ex.true }}</code> ·
+            expert: <code>{{ ex.expert }}</code> ·
+            classifier: <code>{{ ex.classifier }}</code>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Where Deferring Hurts</h2>
+    <p class="p3-hint">Classifier correct, expert wrong &mdash; should not defer.</p>
+    {% for ex in bad_examples %}
+    <div class="p3-example p3-example--bad">
+        <div class="p3-example-text">{{ ex.text }}</div>
+        <div class="p3-example-meta">
+            true: <code>{{ ex.true }}</code> ·
+            expert: <code>{{ ex.expert }}</code> ·
+            classifier: <code>{{ ex.classifier }}</code>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{{ compare_payload|json_script:"compare-data" }}
+<script src="{% static 'project3/lib/chart.umd.min.js' %}"></script>
+<script src="{% static 'project3/expert_chart.js' %}"></script>
+
+{% endblock %}

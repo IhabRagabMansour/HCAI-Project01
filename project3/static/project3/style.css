@@ -180,3 +180,41 @@
     outline-offset: -2px;
     font-weight: 700;
 }
+
+/* ── Highlighted "expert better" rows ── */
+.p3-row-good {
+    background-color: #fff3cd !important;
+    font-weight: 600;
+}
+
+/* ── Example article cards ── */
+.p3-example {
+    max-width: 820px;
+    margin: 8px auto;
+    padding: 10px 14px;
+    border-radius: 4px;
+    border-left: 4px solid #ccc;
+    background: #fafbfd;
+}
+
+.p3-example--good { border-left-color: #27ae60; }
+.p3-example--bad  { border-left-color: #c0392b; }
+
+.p3-example-text {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.5;
+}
+
+.p3-example-meta {
+    font-size: 12.5px;
+    color: #777;
+    margin-top: 6px;
+}
+
+.p3-example-meta code {
+    background-color: #eef2f8;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: monospace;
+}

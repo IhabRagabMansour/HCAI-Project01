@@ -160,3 +160,99 @@ class BaselineViewTest(TestCase):
     def test_nav_links_to_baseline(self):
         response = self.client.get("/project3/")
         self.assertContains(response, "/project3/baseline/")
+
+
+# ── Stage P3-3: simulated expert (Task 2) ──────────────────────────────────
+
+class ExpertSimulationTest(TestCase):
+    def test_region_specific_competence(self):
+        # In-competence classes should be predicted correctly far more often.
+        import numpy as np
+        from .services.expert import simulate_expert, COMPETENCE_IDS, P_HIGH, P_LOW
+        y = np.array([2] * 2000 + [0] * 2000)  # 2000 Business (comp), 2000 World (non-comp)
+        pred = simulate_expert(y, seed=0)
+        comp_acc = (pred[:2000] == 2).mean()
+        noncomp_acc = (pred[2000:] == 0).mean()
+        self.assertGreater(comp_acc, 0.85)      # ~P_HIGH
+        self.assertLess(noncomp_acc, 0.6)       # ~P_LOW
+        self.assertGreater(comp_acc, noncomp_acc)
+
+    def test_not_a_perfect_oracle(self):
+        import numpy as np
+        from .services.expert import simulate_expert
+        y = np.array([2] * 1000)  # even in competence, not 100%
+        pred = simulate_expert(y, seed=1)
+        self.assertLess((pred == 2).mean(), 1.0)
+
+    def test_predictions_are_valid_labels(self):
+        import numpy as np
+        from .services.expert import simulate_expert
+        pred = simulate_expert(np.array([0, 1, 2, 3] * 100), seed=2)
+        self.assertTrue(set(np.unique(pred)).issubset({0, 1, 2, 3}))
+
+    def test_reproducible_with_seed(self):
+        import numpy as np
+        from .services.expert import simulate_expert
+        y = np.array([0, 1, 2, 3] * 250)
+        np.testing.assert_array_equal(
+            simulate_expert(y, seed=5), simulate_expert(y, seed=5)
+        )
+
+    def test_wrong_predictions_differ_from_true(self):
+        import numpy as np
+        from .services.expert import simulate_expert
+        y = np.array([1] * 1000)
+        pred = simulate_expert(y, seed=3)
+        wrong = pred[pred != 1]
+        self.assertTrue(set(np.unique(wrong)).issubset({0, 2, 3}))
+
+
+class ExpertEvalTest(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from .services.expert import get_expert_eval
+        cls.ev = get_expert_eval()
+
+    def test_imperfect_overall(self):
+        self.assertLess(self.ev["overall_accuracy"], 0.9)
+        self.assertGreater(self.ev["overall_accuracy"], 0.5)
+
+    def test_expert_beats_classifier_in_competence(self):
+        # The expert should be better on exactly its competence topics.
+        for c in self.ev["comparison"]:
+            if c["in_competence"]:
+                self.assertTrue(c["expert_better"], msg=f"{c['cls']} should favor expert")
+
+    def test_classifier_beats_expert_outside_competence(self):
+        for c in self.ev["comparison"]:
+            if not c["in_competence"]:
+                self.assertFalse(c["expert_better"], msg=f"{c['cls']} should favor classifier")
+
+    def test_competence_topics_are_business_and_scitech(self):
+        self.assertEqual(set(self.ev["competence_topics"]), {"Business", "Sci/Tech"})
+
+
+class ExpertViewTest(TestCase):
+    def test_returns_200(self):
+        response = self.client.get("/project3/expert/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_shows_description_and_accuracy(self):
+        response = self.client.get("/project3/expert/")
+        self.assertContains(response, "Topic-specialist")
+        self.assertContains(response, "Overall test accuracy")
+
+    def test_has_comparison_chart(self):
+        response = self.client.get("/project3/expert/")
+        self.assertContains(response, 'id="compare-chart"')
+        self.assertContains(response, "expert_chart.js")
+
+    def test_shows_examples(self):
+        response = self.client.get("/project3/expert/")
+        self.assertContains(response, "Where Deferring Helps")
+        self.assertContains(response, "Where Deferring Hurts")
+
+    def test_nav_links_to_expert(self):
+        response = self.client.get("/project3/")
+        self.assertContains(response, "/project3/expert/")
