@@ -1,0 +1,65 @@
+{% extends 'project3/base.html' %}
+{% load static %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block project3_content %}
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Active Learning for Expert Discovery</h2>
+    <p class="p3-report">
+        From Task 4 the expert's labels are no longer available during training.
+        The classifier is already trained, but we must <strong>actively query</strong>
+        the expert on selected pool examples to learn
+        <code>P(expert correct | x)</code> &mdash; the model that drives the deferral
+        decision. Each query is expensive, so the goal is to reach good team
+        performance with as few expert queries as possible.
+    </p>
+    <table class="p3-detail-table">
+        <tr><th>Query strategy</th><td>Margin uncertainty sampling vs. random baseline</td></tr>
+        <tr><th>Pool size</th><td>{{ pool_size }} unlabeled training examples</td></tr>
+        <tr><th>Query budget</th><td>{{ budget }} expert queries</td></tr>
+        <tr><th>Random baseline</th><td>averaged over {{ n_random_runs }} runs</td></tr>
+    </table>
+    <p class="p3-hint">
+        Classifier-uncertain articles are disproportionately the Business/Sci-Tech
+        cases where deferral matters, so uncertainty sampling spends the budget where
+        it counts.
+    </p>
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Team Accuracy vs. Number of Expert Queries</h2>
+    <div class="p3-chart-wrap"><canvas id="active-chart"></canvas></div>
+    <p class="p3-hint">
+        Uncertainty sampling reaches the {{ target_accuracy }} target in
+        <strong>{{ unc_to_target }}</strong> queries; random needs
+        <strong>{{ rnd_to_target }}</strong>. Both approach the full-supervision
+        ceiling ({{ full_supervision|floatformat:4 }}, all pool labels) and beat the
+        classifier-only baseline ({{ classifier_only|floatformat:4 }}).
+    </p>
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Curve Data</h2>
+    <table class="p3-table">
+        <thead>
+            <tr><th>Expert queries</th><th>Uncertainty team acc.</th><th>Random team acc.</th></tr>
+        </thead>
+        <tbody>
+            {% for row in curve_rows %}
+            <tr>
+                <td>{{ row.n }}</td>
+                <td>{{ row.uncertainty|floatformat:4 }}</td>
+                <td>{{ row.random|floatformat:4 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{{ curve_payload|json_script:"active-data" }}
+<script src="{% static 'project3/lib/chart.umd.min.js' %}"></script>
+<script src="{% static 'project3/active_chart.js' %}"></script>
+
+{% endblock %}

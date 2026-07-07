@@ -8,4 +8,5 @@ urlpatterns = [
     path("baseline/", views.baseline, name="baseline"),
     path("expert/", views.expert, name="expert"),
     path("defer/", views.defer, name="defer"),
+    path("active/", views.active, name="active"),
 ]

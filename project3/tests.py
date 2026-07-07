@@ -354,3 +354,87 @@ class DeferViewTest(TestCase):
     def test_nav_links_to_defer(self):
         response = self.client.get("/project3/")
         self.assertContains(response, "/project3/defer/")
+
+
+# ── Stage P3-5: active learning (Task 4) ───────────────────────────────────
+
+class MarginUncertaintyTest(TestCase):
+    def test_confident_point_is_low_uncertainty(self):
+        import numpy as np
+        from .services.active import _margin_uncertainty
+        P = np.array([[0.97, 0.01, 0.01, 0.01]])   # very confident
+        self.assertLess(_margin_uncertainty(P)[0], 0.1)
+
+    def test_ambiguous_point_is_high_uncertainty(self):
+        import numpy as np
+        from .services.active import _margin_uncertainty
+        P = np.array([[0.4, 0.4, 0.1, 0.1]])        # top two tied
+        self.assertGreater(_margin_uncertainty(P)[0], 0.9)
+
+
+class ActiveResultTest(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from .services.active import get_active
+        cls.r = get_active()
+
+    def test_curves_have_all_checkpoints(self):
+        n = len(self.r["checkpoints"])
+        self.assertEqual(len(self.r["uncertainty_curve"]), n)
+        self.assertEqual(len(self.r["random_curve"]), n)
+
+    def test_beats_classifier_only(self):
+        # Both strategies (at the full budget) should beat no-deferral
+        self.assertGreater(self.r["uncertainty_curve"][-1]["team_accuracy"],
+                           self.r["classifier_only"])
+
+    def test_uncertainty_more_efficient_than_random_early(self):
+        # At the smallest budgets, uncertainty should be ahead of random
+        u0 = self.r["uncertainty_curve"][0]["team_accuracy"]
+        r0 = self.r["random_curve"][0]["team_accuracy"]
+        self.assertGreater(u0, r0)
+
+    def test_uncertainty_reaches_target_no_later_than_random(self):
+        u = self.r["uncertainty_queries_to_target"]
+        rnd = self.r["random_queries_to_target"]
+        # If both reach it, uncertainty should need <= queries
+        if u is not None and rnd is not None:
+            self.assertLessEqual(u, rnd)
+
+    def test_approaches_full_supervision(self):
+        # The best active-learning accuracy should be close to using all labels
+        best = self.r["uncertainty_curve"][-1]["team_accuracy"]
+        self.assertLessEqual(best, self.r["full_supervision"] + 1e-9)
+        self.assertGreater(best, self.r["full_supervision"] - 0.02)
+
+    def test_team_accuracies_are_valid(self):
+        for pt in self.r["uncertainty_curve"] + self.r["random_curve"]:
+            self.assertGreaterEqual(pt["team_accuracy"], 0.0)
+            self.assertLessEqual(pt["team_accuracy"], 1.0)
+            self.assertGreaterEqual(pt["deferral_rate"], 0.0)
+            self.assertLessEqual(pt["deferral_rate"], 1.0)
+
+
+class ActiveViewTest(TestCase):
+    def test_returns_200(self):
+        response = self.client.get("/project3/active/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_shows_strategy_and_budget(self):
+        response = self.client.get("/project3/active/")
+        self.assertContains(response, "uncertainty")
+        self.assertContains(response, "Query budget")
+
+    def test_has_performance_chart(self):
+        response = self.client.get("/project3/active/")
+        self.assertContains(response, 'id="active-chart"')
+        self.assertContains(response, "active_chart.js")
+
+    def test_shows_curve_table(self):
+        response = self.client.get("/project3/active/")
+        self.assertContains(response, "Expert queries")
+
+    def test_nav_links_to_active(self):
+        response = self.client.get("/project3/")
+        self.assertContains(response, "/project3/active/")

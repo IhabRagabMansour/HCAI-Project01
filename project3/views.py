@@ -5,6 +5,7 @@ from .services.data import get_agnews, class_distribution, CLASS_NAMES
 from .services.baseline import get_baseline_eval, MODEL_DESCRIPTION
 from .services.expert import get_expert_eval, get_expert_test_predictions
 from .services.defer import get_deferral
+from .services.active import get_active
 
 
 def _truncate(text, n=160):
@@ -175,3 +176,39 @@ def defer(request):
         },
     }
     return render(request, "project3/defer.html", context)
+
+
+def active(request):
+    """Task 4: active learning — query the expert efficiently to learn deferral."""
+    r = get_active()
+    checkpoints = r["checkpoints"]
+
+    curve_rows = [
+        {
+            "n": checkpoints[i],
+            "uncertainty": r["uncertainty_curve"][i]["team_accuracy"],
+            "random": r["random_curve"][i]["team_accuracy"],
+        }
+        for i in range(len(checkpoints))
+    ]
+
+    context = {
+        "title": "Task 4 — Active Learning",
+        "pool_size": r["pool_size"],
+        "budget": r["budget"],
+        "n_random_runs": r["n_random_runs"],
+        "classifier_only": r["classifier_only"],
+        "full_supervision": r["full_supervision"],
+        "target_accuracy": r["target_accuracy"],
+        "unc_to_target": r["uncertainty_queries_to_target"],
+        "rnd_to_target": r["random_queries_to_target"],
+        "curve_rows": curve_rows,
+        "curve_payload": {
+            "checkpoints": checkpoints,
+            "uncertainty": [p["team_accuracy"] for p in r["uncertainty_curve"]],
+            "random": [p["team_accuracy"] for p in r["random_curve"]],
+            "classifier_only": r["classifier_only"],
+            "full_supervision": r["full_supervision"],
+        },
+    }
+    return render(request, "project3/active.html", context)
