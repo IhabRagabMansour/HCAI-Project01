@@ -256,3 +256,101 @@ class ExpertViewTest(TestCase):
     def test_nav_links_to_expert(self):
         response = self.client.get("/project3/")
         self.assertContains(response, "/project3/expert/")
+
+
+# ── Stage P3-4: learning to defer (Task 3) ─────────────────────────────────
+
+class DeferralMetricsTest(TestCase):
+    def test_team_uses_expert_when_deferred(self):
+        import numpy as np
+        from .services.defer import deferral_metrics
+        y = np.array([0, 1, 2, 3])
+        clf = np.array([0, 1, 0, 0])   # right on 0,1; wrong on 2,3
+        exp = np.array([3, 3, 2, 3])   # right on 2,3; wrong on 0,1
+        defer = np.array([False, False, True, True])
+        m = deferral_metrics(y, clf, exp, defer)
+        # team = [clf0, clf1, exp2, exp3] = [0,1,2,3] -> all correct
+        self.assertEqual(m["team_accuracy"], 1.0)
+        self.assertEqual(m["deferral_rate"], 0.5)
+
+    def test_oracle_is_upper_bound(self):
+        import numpy as np
+        from .services.defer import deferral_metrics
+        y = np.array([0, 1, 2, 3])
+        clf = np.array([0, 1, 0, 0])
+        exp = np.array([3, 3, 2, 3])
+        m = deferral_metrics(y, clf, exp, np.array([False, False, True, True]))
+        self.assertGreaterEqual(m["oracle_accuracy"], m["team_accuracy"])
+
+    def test_useful_and_harmful_counts(self):
+        import numpy as np
+        from .services.defer import deferral_metrics
+        y = np.array([0, 1, 2, 3])
+        clf = np.array([9, 1, 2, 0])   # wrong,right,right,wrong
+        exp = np.array([0, 9, 9, 3])   # right,wrong,wrong,right
+        defer = np.array([True, True, False, True])
+        m = deferral_metrics(y, clf, exp, defer)
+        # deferred idx 0 (exp right, clf wrong -> useful), idx1 (exp wrong, clf right -> harmful), idx3 (both? clf wrong exp right -> useful)
+        self.assertAlmostEqual(m["useful_deferral_frac"], 2 / 3)
+        self.assertAlmostEqual(m["harmful_deferral_frac"], 1 / 3)
+
+
+class DeferralResultTest(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from .services.defer import get_deferral
+        cls.r = get_deferral()
+
+    def test_advantage_beats_classifier_alone(self):
+        adv = self.r["advantage"]
+        self.assertGreater(adv["team_accuracy"], adv["classifier_accuracy"])
+
+    def test_advantage_beats_expert_alone(self):
+        adv = self.r["advantage"]
+        self.assertGreater(adv["team_accuracy"], adv["expert_accuracy"])
+
+    def test_advantage_beats_confidence_baseline(self):
+        self.assertGreater(
+            self.r["advantage"]["team_accuracy"],
+            self.r["confidence"]["team_accuracy"],
+        )
+
+    def test_team_below_oracle(self):
+        adv = self.r["advantage"]
+        self.assertLess(adv["team_accuracy"], adv["oracle_accuracy"])
+
+    def test_defers_something_but_not_everything(self):
+        rate = self.r["advantage"]["deferral_rate"]
+        self.assertGreater(rate, 0.0)
+        self.assertLess(rate, 1.0)
+
+    def test_has_example_articles(self):
+        self.assertGreater(len(self.r["deferred_examples"]), 0)
+        self.assertGreater(len(self.r["kept_examples"]), 0)
+
+
+class DeferViewTest(TestCase):
+    def test_returns_200(self):
+        response = self.client.get("/project3/defer/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_shows_strategies_and_metrics(self):
+        response = self.client.get("/project3/defer/")
+        self.assertContains(response, "Expert-advantage")
+        self.assertContains(response, "Team accuracy")
+        self.assertContains(response, "Deferral rate")
+
+    def test_has_summary_chart(self):
+        response = self.client.get("/project3/defer/")
+        self.assertContains(response, 'id="summary-chart"')
+        self.assertContains(response, "defer_chart.js")
+
+    def test_shows_deferred_and_kept(self):
+        response = self.client.get("/project3/defer/")
+        self.assertContains(response, "Deferred Articles")
+        self.assertContains(response, "Kept Articles")
+
+    def test_nav_links_to_defer(self):
+        response = self.client.get("/project3/")
+        self.assertContains(response, "/project3/defer/")

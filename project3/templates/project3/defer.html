@@ -1,0 +1,91 @@
+{% extends 'project3/base.html' %}
+{% load static %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block project3_content %}
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Deferral Strategies</h2>
+    <p class="p3-report">
+        For each article the system chooses to <strong>predict</strong> (classifier)
+        or <strong>defer</strong> (expert). We compare two strategies:
+    </p>
+    <ul class="p3-report-list">
+        <li><strong>Expert-advantage (Bayes-optimal rule):</strong> defer when
+            <code>P(expert correct | x) &gt; max<sub>y</sub> P(y | x)</code> &mdash;
+            i.e. when the expert is more likely correct than the classifier is
+            confident. <code>P(expert correct | x)</code> is learned from TF-IDF text;
+            the classifier's softmax confidence estimates its own correctness.</li>
+        <li><strong>Confidence threshold (naïve baseline):</strong> defer when the
+            classifier's top probability falls below a tuned threshold
+            (&tau; = {{ confidence_threshold|floatformat:3 }}). This ignores whether
+            the expert is actually better &mdash; the limitation the lecture highlights.</li>
+    </ul>
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Accuracy Comparison</h2>
+    <div class="p3-chart-wrap"><canvas id="summary-chart"></canvas></div>
+    <p class="p3-hint">
+        The expert-advantage team ({{ advantage_team|floatformat:4 }}) beats the
+        classifier alone ({{ classifier_accuracy|floatformat:4 }}), the expert alone
+        ({{ expert_accuracy|floatformat:4 }}), and the confidence baseline
+        ({{ confidence_team|floatformat:4 }}), approaching the oracle upper bound
+        ({{ oracle_accuracy|floatformat:4 }}).
+    </p>
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Deferral Quality Metrics</h2>
+    <table class="p3-table">
+        <thead>
+            <tr><th>Metric</th><th>Expert-advantage</th><th>Confidence baseline</th></tr>
+        </thead>
+        <tbody>
+            {% for row in metric_rows %}
+            <tr>
+                <th class="p3-metric-name">{{ row.label }}</th>
+                <td>{{ row.advantage|floatformat:4 }}</td>
+                <td>{{ row.confidence|floatformat:4 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Deferred Articles</h2>
+    <p class="p3-hint">Articles the expert-advantage system chose to send to the expert.</p>
+    {% for ex in deferred_examples %}
+    <div class="p3-example p3-example--good">
+        <div class="p3-example-text">{{ ex.text }}</div>
+        <div class="p3-example-meta">
+            true: <code>{{ ex.true }}</code> ·
+            expert: <code>{{ ex.expert }}</code> ·
+            classifier: <code>{{ ex.classifier }}</code>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Kept Articles</h2>
+    <p class="p3-hint">Articles the system kept for the classifier.</p>
+    {% for ex in kept_examples %}
+    <div class="p3-example">
+        <div class="p3-example-text">{{ ex.text }}</div>
+        <div class="p3-example-meta">
+            true: <code>{{ ex.true }}</code> ·
+            expert: <code>{{ ex.expert }}</code> ·
+            classifier: <code>{{ ex.classifier }}</code>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{{ summary_payload|json_script:"summary-data" }}
+<script src="{% static 'project3/lib/chart.umd.min.js' %}"></script>
+<script src="{% static 'project3/defer_chart.js' %}"></script>
+
+{% endblock %}

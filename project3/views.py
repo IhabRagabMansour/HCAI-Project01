@@ -4,6 +4,7 @@ from django.shortcuts import render
 from .services.data import get_agnews, class_distribution, CLASS_NAMES
 from .services.baseline import get_baseline_eval, MODEL_DESCRIPTION
 from .services.expert import get_expert_eval, get_expert_test_predictions
+from .services.defer import get_deferral
 
 
 def _truncate(text, n=160):
@@ -118,3 +119,59 @@ def expert(request):
         },
     }
     return render(request, "project3/expert.html", context)
+
+
+# Deferral-metric rows for the side-by-side table (key -> display label).
+_DEFER_METRIC_ROWS = [
+    ("team_accuracy", "Team accuracy"),
+    ("deferral_rate", "Deferral rate"),
+    ("accuracy_deferred", "Accuracy on deferred"),
+    ("accuracy_kept", "Accuracy on kept"),
+    ("useful_deferral_frac", "Useful deferrals"),
+    ("harmful_deferral_frac", "Harmful deferrals"),
+    ("expert_correct_when_deferred", "Expert correct when deferred"),
+    ("classifier_correct_when_kept", "Classifier correct when kept"),
+]
+
+
+def defer(request):
+    """Task 3: learning to defer — strategies, team metrics, oracle, examples."""
+    r = get_deferral()
+    adv = r["advantage"]
+    conf = r["confidence"]
+
+    metric_rows = [
+        {"label": label, "advantage": adv[key], "confidence": conf[key]}
+        for key, label in _DEFER_METRIC_ROWS
+    ]
+
+    def _examples(items):
+        return [
+            {
+                "text": _truncate(ex["text"]),
+                "true": ex["true"], "expert": ex["expert"], "classifier": ex["classifier"],
+            }
+            for ex in items
+        ]
+
+    context = {
+        "title": "Task 3 — Learning to Defer",
+        "classifier_accuracy": adv["classifier_accuracy"],
+        "expert_accuracy": adv["expert_accuracy"],
+        "oracle_accuracy": adv["oracle_accuracy"],
+        "advantage_team": adv["team_accuracy"],
+        "confidence_team": conf["team_accuracy"],
+        "confidence_threshold": r["confidence_threshold"],
+        "metric_rows": metric_rows,
+        "deferred_examples": _examples(r["deferred_examples"]),
+        "kept_examples": _examples(r["kept_examples"]),
+        "summary_payload": {
+            "labels": ["Classifier only", "Expert only", "Confidence team",
+                       "Advantage team", "Oracle"],
+            "values": [
+                adv["classifier_accuracy"], adv["expert_accuracy"],
+                conf["team_accuracy"], adv["team_accuracy"], adv["oracle_accuracy"],
+            ],
+        },
+    }
+    return render(request, "project3/defer.html", context)
