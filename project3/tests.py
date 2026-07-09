@@ -438,3 +438,94 @@ class ActiveViewTest(TestCase):
     def test_nav_links_to_active(self):
         response = self.client.get("/project3/")
         self.assertContains(response, "/project3/active/")
+
+
+# ── Stage P3-6: PDF report + human interface (Task 5) ──────────────────────
+
+class ReportPdfTest(TestCase):
+    def test_build_report_returns_pdf_bytes(self):
+        from .services.report import build_report_pdf
+        pdf = build_report_pdf()
+        self.assertGreater(len(pdf), 1000)
+        self.assertEqual(pdf[:5], b"%PDF-")
+
+    def test_download_returns_pdf_attachment(self):
+        response = self.client.get("/project3/report/download/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn(".pdf", response["Content-Disposition"])
+
+    def test_nav_links_to_report(self):
+        response = self.client.get("/project3/")
+        self.assertContains(response, "/project3/report/download/")
+
+
+class DemoQueryPoolTest(TestCase):
+    def test_pool_has_expected_size(self):
+        from .services.active import get_demo_query_pool, DEMO_POOL_SIZE
+        pool = get_demo_query_pool()
+        self.assertEqual(len(pool), DEMO_POOL_SIZE)
+
+    def test_pool_items_have_fields(self):
+        from .services.active import get_demo_query_pool
+        for i, item in enumerate(get_demo_query_pool()):
+            self.assertEqual(item["position"], i)
+            self.assertIsInstance(item["text"], str)
+            self.assertIn(item["true_label"], {0, 1, 2, 3})
+
+
+class HumanInterfaceTest(TestCase):
+    def test_get_returns_200(self):
+        response = self.client.get("/project3/human/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_shows_first_article_and_buttons(self):
+        response = self.client.get("/project3/human/")
+        self.assertContains(response, "Article #1")
+        for cls in ["World", "Sports", "Business", "Sci/Tech"]:
+            self.assertContains(response, cls)
+
+    def test_submitting_label_stores_it_and_advances(self):
+        from .models import HumanLabel
+        self.client.post("/project3/human/", {"position": "0", "chosen_label": "1"})
+        self.assertEqual(HumanLabel.objects.count(), 1)
+        lb = HumanLabel.objects.first()
+        self.assertEqual(lb.article_index, 0)
+        self.assertEqual(lb.chosen_label, 1)
+        # Next GET should show article #2
+        response = self.client.get("/project3/human/")
+        self.assertContains(response, "Article #2")
+
+    def test_duplicate_position_not_stored_twice(self):
+        from .models import HumanLabel
+        self.client.post("/project3/human/", {"position": "0", "chosen_label": "1"})
+        self.client.post("/project3/human/", {"position": "0", "chosen_label": "2"})
+        self.assertEqual(HumanLabel.objects.filter(article_index=0).count(), 1)
+
+    def test_true_label_recorded_from_pool(self):
+        from .models import HumanLabel
+        from .services.active import get_demo_query_pool
+        pool = get_demo_query_pool()
+        self.client.post("/project3/human/", {"position": "0", "chosen_label": "0"})
+        lb = HumanLabel.objects.get(article_index=0)
+        self.assertEqual(lb.true_label, pool[0]["true_label"])
+
+    def test_reset_clears_labels(self):
+        from .models import HumanLabel
+        self.client.post("/project3/human/", {"position": "0", "chosen_label": "1"})
+        self.client.post("/project3/human/", {"action": "reset"})
+        self.assertEqual(HumanLabel.objects.count(), 0)
+
+    def test_finished_when_all_labeled(self):
+        from .services.active import get_demo_query_pool
+        pool = get_demo_query_pool()
+        for item in pool:
+            self.client.post("/project3/human/", {"position": str(item["position"]), "chosen_label": "0"})
+        response = self.client.get("/project3/human/")
+        self.assertContains(response, "labeled all")
+
+    def test_is_correct_property(self):
+        from .models import HumanLabel
+        self.assertTrue(HumanLabel(true_label=2, chosen_label=2).is_correct)
+        self.assertFalse(HumanLabel(true_label=2, chosen_label=1).is_correct)

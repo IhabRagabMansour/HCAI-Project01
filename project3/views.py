@@ -1,11 +1,14 @@
 import numpy as np
-from django.shortcuts import render
+from django.contrib import messages
+from django.http import HttpResponse
+from django.shortcuts import redirect, render
 
+from .models import HumanLabel
 from .services.data import get_agnews, class_distribution, CLASS_NAMES
 from .services.baseline import get_baseline_eval, MODEL_DESCRIPTION
 from .services.expert import get_expert_eval, get_expert_test_predictions
 from .services.defer import get_deferral
-from .services.active import get_active
+from .services.active import get_active, get_demo_query_pool, DEMO_POOL_SIZE
 
 
 def _truncate(text, n=160):
@@ -212,3 +215,62 @@ def active(request):
         },
     }
     return render(request, "project3/active.html", context)
+
+
+def report_download(request):
+    """Stream the mandatory PDF report."""
+    from .services.report import build_report_pdf
+    pdf = build_report_pdf()
+    response = HttpResponse(pdf, content_type="application/pdf")
+    response["Content-Disposition"] = 'attachment; filename="project3_report.pdf"'
+    return response
+
+
+def human(request):
+    """Task 5 (optional): a user acts as the expert, labeling uncertain articles."""
+    pool = get_demo_query_pool()
+
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+        if action == "reset":
+            HumanLabel.objects.all().delete()
+            messages.success(request, "Your labels were reset.")
+            return redirect("project3:human")
+
+        try:
+            position = int(request.POST.get("position", ""))
+            chosen = int(request.POST.get("chosen_label", ""))
+        except ValueError:
+            return redirect("project3:human")
+
+        if 0 <= position < len(pool) and 0 <= chosen < len(CLASS_NAMES):
+            if not HumanLabel.objects.filter(article_index=position).exists():
+                HumanLabel.objects.create(
+                    article_index=position,
+                    true_label=pool[position]["true_label"],
+                    chosen_label=chosen,
+                )
+        return redirect("project3:human")
+
+    labels = list(HumanLabel.objects.all())
+    labeled_positions = {lb.article_index for lb in labels}
+    n_done = len(labeled_positions)
+    n_correct = sum(1 for lb in labels if lb.is_correct)
+
+    # Find the next unlabeled article.
+    current = next((item for item in pool if item["position"] not in labeled_positions), None)
+
+    context = {
+        "title": "Task 5 — Human Expert (optional)",
+        "class_names": CLASS_NAMES,
+        "budget": len(pool),
+        "n_done": n_done,
+        "n_correct": n_correct,
+        "accuracy": (n_correct / n_done) if n_done else None,
+        "current": None if current is None else {
+            "position": current["position"],
+            "text": current["text"],
+        },
+        "finished": current is None,
+    }
+    return render(request, "project3/human.html", context)

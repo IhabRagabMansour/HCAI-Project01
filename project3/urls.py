@@ -9,4 +9,6 @@ urlpatterns = [
     path("expert/", views.expert, name="expert"),
     path("defer/", views.defer, name="defer"),
     path("active/", views.active, name="active"),
+    path("human/", views.human, name="human"),
+    path("report/download/", views.report_download, name="report_download"),
 ]

@@ -1,0 +1,61 @@
+{% extends 'project3/base.html' %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block project3_content %}
+
+<div class="p3-section">
+    <h2 class="p3-section-title">Be the Expert</h2>
+    <p class="p3-report">
+        This optional demo lets <strong>you</strong> act as the expert being queried by
+        active learning. Each article below was selected by uncertainty sampling &mdash;
+        the same strategy used with the simulated expert. Choose the topic you think is
+        correct; your labels are stored and could feed the same deferral pipeline.
+    </p>
+    <table class="p3-detail-table">
+        <tr><th>Progress</th><td>{{ n_done }} / {{ budget }} labeled</td></tr>
+        {% if accuracy is not None %}
+        <tr><th>Your accuracy so far</th><td>{{ n_correct }} / {{ n_done }} ({{ accuracy|floatformat:2 }})</td></tr>
+        {% endif %}
+    </table>
+</div>
+
+{% if finished %}
+<div class="p3-section">
+    <div class="p3-msg p3-msg--success">
+        You have labeled all {{ budget }} articles.
+        {% if accuracy is not None %}Your accuracy: {{ accuracy|floatformat:2 }}.{% endif %}
+    </div>
+    <div class="p3-section" style="text-align:center;">
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" name="action" value="reset">Reset and start over</button>
+        </form>
+    </div>
+</div>
+{% else %}
+<div class="p3-section">
+    <h2 class="p3-section-title">Article #{{ current.position|add:1 }}</h2>
+    <div class="p3-article">{{ current.text }}</div>
+
+    <form method="post" class="p3-label-form">
+        {% csrf_token %}
+        <input type="hidden" name="position" value="{{ current.position }}">
+        <p class="p3-hint">Which topic is this?</p>
+        <div class="p3-label-buttons">
+            {% for cls in class_names %}
+            <button type="submit" name="chosen_label" value="{{ forloop.counter0 }}">{{ cls }}</button>
+            {% endfor %}
+        </div>
+    </form>
+
+    <div class="p3-section" style="text-align:center; margin-top:14px;">
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" name="action" value="reset">Reset</button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

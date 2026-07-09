@@ -168,3 +168,31 @@ def get_active() -> dict:
     if os.path.exists(ACTIVE_FILE):
         return joblib.load(ACTIVE_FILE)
     return build_active()
+
+
+DEMO_POOL_SIZE = 10
+
+
+@lru_cache(maxsize=1)
+def get_demo_query_pool() -> tuple:
+    """The most-uncertain articles for the human labeling demo (Task 5).
+
+    Returns a tuple of dicts with a stable 0-based ``position``, the article
+    ``text``, and its ``true_label`` — the same uncertainty strategy used by the
+    automated active-learning loop, applied to a small candidate set.
+    """
+    data = get_agnews()
+    baseline = get_baseline()
+    rng = np.random.default_rng(AL_SEED + 999)
+    idx = rng.choice(len(data.y_train), size=400, replace=False)
+    X = [data.X_train[i] for i in idx]
+    unc = _margin_uncertainty(baseline.predict_proba(X))
+    order = np.argsort(-unc)[:DEMO_POOL_SIZE]
+    return tuple(
+        {
+            "position": pos,
+            "text": data.X_train[int(idx[k])],
+            "true_label": int(data.y_train[int(idx[k])]),
+        }
+        for pos, k in enumerate(order)
+    )
