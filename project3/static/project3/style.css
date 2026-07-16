@@ -225,6 +225,19 @@
     width: auto;
 }
 
+/* ── Overview navigation cards ── */
+.p3-nav-cards {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.p3-nav-cards button {
+    width: auto;
+    padding: 0 20px;
+}
+
 /* ── Example article cards ── */
 .p3-example {
     max-width: 820px;

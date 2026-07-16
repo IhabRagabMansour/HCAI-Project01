@@ -57,9 +57,14 @@
 </div>
 
 <div class="p3-section">
-    <div class="p3-msg p3-msg--info">
-        The baseline classifier, simulated expert, learning-to-defer, and active
-        learning sections are being added in stages.
+    <h2 class="p3-section-title">Explore</h2>
+    <div class="p3-nav-cards">
+        <a href="{% url 'project3:baseline' %}"><button type="button">Task 1 — Baseline</button></a>
+        <a href="{% url 'project3:expert' %}"><button type="button">Task 2 — Expert</button></a>
+        <a href="{% url 'project3:defer' %}"><button type="button">Task 3 — Defer</button></a>
+        <a href="{% url 'project3:active' %}"><button type="button">Task 4 — Active Learning</button></a>
+        <a href="{% url 'project3:human' %}"><button type="button">Task 5 — Human Expert</button></a>
+        <a href="{% url 'project3:report_download' %}"><button type="button">⬇ Download PDF Report</button></a>
     </div>
 </div>
 

@@ -529,3 +529,49 @@ class HumanInterfaceTest(TestCase):
         from .models import HumanLabel
         self.assertTrue(HumanLabel(true_label=2, chosen_label=2).is_correct)
         self.assertFalse(HumanLabel(true_label=2, chosen_label=1).is_correct)
+
+
+# ── Stage P3-7: p3_build command + final consistency ───────────────────────
+
+class P3BuildCommandTest(TestCase):
+    def test_command_runs_and_reports_all_steps(self):
+        import io
+        from django.core.management import call_command
+        out = io.StringIO()
+        call_command("p3_build", stdout=out)
+        text = out.getvalue()
+        for step in [
+            "AG News dataset", "Baseline classifier", "Baseline evaluation",
+            "Expert train predictions", "Expert test predictions",
+            "Expert evaluation", "Learning-to-defer results",
+            "Active-learning curves", "Human-demo query pool", "PDF report",
+        ]:
+            self.assertIn(step, text)
+        self.assertIn("All Project 3 artifacts ready", text)
+
+
+class CrossSectionConsistencyTest(TestCase):
+    """The numbers shown on different pages must come from the same artifacts."""
+
+    def test_classifier_accuracy_consistent_everywhere(self):
+        from .services.baseline import get_baseline_eval
+        from .services.defer import get_deferral
+        from .services.active import get_active
+        base_acc = get_baseline_eval()["accuracy"]
+        self.assertAlmostEqual(get_deferral()["advantage"]["classifier_accuracy"], base_acc, places=9)
+        self.assertAlmostEqual(get_active()["classifier_only"], base_acc, places=9)
+
+    def test_expert_accuracy_consistent(self):
+        from .services.expert import get_expert_eval
+        from .services.defer import get_deferral
+        self.assertAlmostEqual(
+            get_deferral()["advantage"]["expert_accuracy"],
+            get_expert_eval()["overall_accuracy"], places=9,
+        )
+
+    def test_overview_links_to_every_section(self):
+        response = self.client.get("/project3/")
+        for path in ["/project3/baseline/", "/project3/expert/", "/project3/defer/",
+                     "/project3/active/", "/project3/human/",
+                     "/project3/report/download/"]:
+            self.assertContains(response, path)
