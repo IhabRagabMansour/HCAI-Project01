@@ -47,12 +47,21 @@ class InferProblemTypeTest(TestCase):
         df = pd.DataFrame({"x": [1, 2, 3], "y": [0, 1, 0]})
         self.assertEqual(infer_problem_type(df), "classification")
 
+    def test_classification_many_integer_classes(self):
+        target = [i % 20 for i in range(100)]
+        df = pd.DataFrame({"x": range(100), "y": target})
+        self.assertEqual(infer_problem_type(df), "classification")
+
     def test_regression_many_unique(self):
         df = pd.DataFrame({"x": range(50), "y": [i * 1.5 for i in range(50)]})
         self.assertEqual(infer_problem_type(df), "regression")
 
     def test_classification_string_target(self):
         df = pd.DataFrame({"x": [1, 2, 3], "label": ["cat", "dog", "cat"]})
+        self.assertEqual(infer_problem_type(df), "classification")
+
+    def test_classification_bool_target(self):
+        df = pd.DataFrame({"x": [1, 2, 3], "flag": [True, False, True]})
         self.assertEqual(infer_problem_type(df), "classification")
 
     def test_unknown_single_column(self):
