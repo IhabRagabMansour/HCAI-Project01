@@ -12,7 +12,7 @@ from .services.data import (
     build_chart_data, build_histogram_data, build_boxplot_data, build_heatmap_data,
 )
 from .services.preprocess import prepare_experiment
-from .services.train import train_and_score, HYPERPARAM_SPECS
+from .services.train import train_and_score, train_with_random_search, HYPERPARAM_SPECS
 from .services.evaluate import build_evaluation, cross_validate_pipeline, compute_learning_curve
 from .services.predict import build_input_form_spec, pick_random_row_values, predict_single
 
@@ -372,16 +372,22 @@ def model_create(request, experiment_pk):
     hp_errors: list = []
     if request.method == "POST":
         form = TrainedModelForm(request.POST, problem_type=problem_type)
-        # Parse + validate hyperparameters for the chosen algorithm
-        algo_for_hp = request.POST.get("algorithm", "")
-        hp_dict, hp_errors = _parse_hyperparameters(request.POST, algo_for_hp)
+        training_mode = request.POST.get("training_mode", "manual")
+        # Parse + validate hyperparameters only for the manual path.
+        if training_mode == "random_search":
+            hp_dict, hp_errors = {}, []
+        else:
+            algo_for_hp = request.POST.get("algorithm", "")
+            hp_dict, hp_errors = _parse_hyperparameters(request.POST, algo_for_hp)
+
         if form.is_valid() and not hp_errors:
+            training_mode = form.cleaned_data.get("training_mode", "manual")
             model = form.save(commit=False)
             model.experiment = experiment
             if not model.name:
                 count = experiment.models.count()
                 model.name = f"{model.algorithm_display} #{count + 1}"
-            model.hyperparameters = hp_dict
+            search_info = None
             model.save()
 
             pipeline = None
@@ -394,17 +400,29 @@ def model_create(request, experiment_pk):
                     experiment.dataset.problem_type,
                     experiment.as_config(),
                 )
-                result = train_and_score(
-                    prepared, model.algorithm, model.metric,
-                    random_seed=experiment.random_seed,
-                    hyperparameters=hp_dict,
-                )
+                if training_mode == "random_search":
+                    result, hp_dict, search_info = train_with_random_search(
+                        prepared,
+                        model.algorithm,
+                        model.metric,
+                        problem_type,
+                        random_seed=experiment.random_seed,
+                        cv_folds=model.cv_folds,
+                        n_iter=form.cleaned_data.get("random_search_iterations", 20),
+                    )
+                else:
+                    result = train_and_score(
+                        prepared, model.algorithm, model.metric,
+                        random_seed=experiment.random_seed,
+                        hyperparameters=hp_dict,
+                    )
                 pipeline = result.pipeline
                 model.model_file.save(
                     f"model_{model.pk}.joblib",
                     ContentFile(result.pipeline_bytes),
                     save=False,
                 )
+                model.hyperparameters = hp_dict
                 model.train_score = result.train_score
                 model.test_score = result.test_score
                 model.train_duration_ms = result.train_duration_ms
@@ -422,39 +440,47 @@ def model_create(request, experiment_pk):
                         prepared.label_map,
                         prepared.feature_names,
                     )
+                    if search_info is not None:
+                        model.evaluation["search"] = search_info
+                        model.cv_scores = {
+                            model.metric: {
+                                "mean": search_info.get("best_score"),
+                                "std": search_info.get("best_std", 0.0),
+                                "scores": [],
+                            }
+                        }
+                    elif model.cv_folds >= 2:
+                        # Cross-validation (optional; cv_folds=0 skips)
+                        try:
+                            model.cv_scores = cross_validate_pipeline(
+                                prepared,
+                                model.algorithm,
+                                experiment.dataset.problem_type,
+                                cv_folds=model.cv_folds,
+                                random_seed=experiment.random_seed,
+                                hyperparameters=hp_dict,
+                            )
+                        except Exception as e:
+                            model.cv_scores = {"_error": str(e)}
+
+                        # Learning curve (also tied to cv_folds; same fold count)
+                        try:
+                            lc = compute_learning_curve(
+                                prepared,
+                                model.algorithm,
+                                experiment.dataset.problem_type,
+                                cv_folds=model.cv_folds,
+                                metric=model.metric,
+                                random_seed=experiment.random_seed,
+                                hyperparameters=hp_dict,
+                            )
+                            if lc and model.evaluation is not None:
+                                model.evaluation["learning_curve"] = lc
+                        except Exception:
+                            pass  # Learning curve is optional, don't block training
                     model.eval_error = None
                 except Exception as e:
                     model.eval_error = str(e)
-
-                # Cross-validation (optional; cv_folds=0 skips)
-                if model.cv_folds >= 2:
-                    try:
-                        model.cv_scores = cross_validate_pipeline(
-                            prepared,
-                            model.algorithm,
-                            experiment.dataset.problem_type,
-                            cv_folds=model.cv_folds,
-                            random_seed=experiment.random_seed,
-                            hyperparameters=hp_dict,
-                        )
-                    except Exception as e:
-                        model.cv_scores = {"_error": str(e)}
-
-                    # Learning curve (also tied to cv_folds; same fold count)
-                    try:
-                        lc = compute_learning_curve(
-                            prepared,
-                            model.algorithm,
-                            experiment.dataset.problem_type,
-                            cv_folds=model.cv_folds,
-                            metric=model.metric,
-                            random_seed=experiment.random_seed,
-                            hyperparameters=hp_dict,
-                        )
-                        if lc and model.evaluation is not None:
-                            model.evaluation["learning_curve"] = lc
-                    except Exception:
-                        pass  # Learning curve is optional, don't block training
 
             model.save()
             messages.success(request, f"'{model.name}' trained.")
