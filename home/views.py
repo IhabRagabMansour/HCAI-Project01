@@ -7,6 +7,7 @@ def index(request):
 
     students = [
         {"name": "Ehab Mansour", "matriculation": "645043"},
+        {"name": "Elyes Oueslati", "matriculation": "645069"}
     ]
 
     projects = [
