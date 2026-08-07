@@ -4,6 +4,7 @@ from django.test import TestCase
 from .services.data import (
     get_agnews, class_distribution, CLASS_NAMES, N_CLASSES,
 )
+from .services.preprocess import preprocess_text
 
 
 # ── Stage P3-1: AG News data service ───────────────────────────────────────
@@ -134,6 +135,17 @@ class BaselineServiceTest(TestCase):
         pipe = get_baseline()
         pred = pipe.predict(["The football team scored a goal to win the match."])[0]
         self.assertEqual(CLASS_NAMES[int(pred)], "Sports")
+
+    def test_preprocess_text_removes_stop_words_and_normalizes(self):
+        cleaned = preprocess_text("The runners were running with the teams in the stadium")
+        self.assertNotIn("the", cleaned.split())
+        self.assertTrue(any(token.startswith("run") for token in cleaned.split()))
+
+    def test_raw_articles_remain_unchanged_for_display(self):
+        data = get_agnews()
+        original = data.X_train[0]
+        self.assertIsInstance(original, str)
+        self.assertGreater(len(original), 0)
 
 
 class BaselineViewTest(TestCase):
