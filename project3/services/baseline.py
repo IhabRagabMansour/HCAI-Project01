@@ -24,6 +24,7 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.pipeline import Pipeline
 
 from .data import CLASS_NAMES, N_CLASSES, get_agnews
+from .preprocess import preprocess_text
 
 ARTIFACT_DIR = os.path.join(settings.BASE_DIR, "project3", "artifacts")
 BASELINE_FILE = os.path.join(ARTIFACT_DIR, "baseline.joblib")
@@ -37,11 +38,11 @@ SEED = 42
 def _build_pipeline() -> Pipeline:
     return Pipeline([
         ("tfidf", TfidfVectorizer(
+            preprocessor=preprocess_text,
             sublinear_tf=True,
             ngram_range=(1, 2),
             max_features=50000,
             min_df=2,
-            stop_words="english",
         )),
         ("clf", LogisticRegression(
             C=10.0,
