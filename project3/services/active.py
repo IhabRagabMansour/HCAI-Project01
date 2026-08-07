@@ -13,7 +13,7 @@ Pool-based loop (Lecture 6 slide 17):
     5. repeat until the query budget is exhausted; evaluate on the test set.
 
 Query strategies compared:
-  - "uncertainty": margin sampling on the classifier — u = 1 - (p1 - p2)
+  - "uncertainty": margin sampling on the classifier — u = 1 - (p_top1 - p_top2)
     (Lecture 6 slide 25). Classifier-uncertain articles are disproportionately
     the Business/Sci-Tech cases where deferral matters, so this concentrates the
     budget on the deferral-relevant region.
