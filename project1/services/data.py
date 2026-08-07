@@ -1,9 +1,11 @@
 from io import BytesIO
 
+import numpy as np
 import pandas as pd
 
 HEAD_PREVIEW_ROWS = 10
-CLASSIFICATION_UNIQUE_THRESHOLD = 10
+CLASSIFICATION_MAX_INTEGER_UNIQUE_VALUES = 200
+CLASSIFICATION_MAX_UNIQUE_RATIO = 0.25
 
 
 def read_csv_safely(file_field) -> pd.DataFrame:
@@ -50,11 +52,32 @@ def infer_problem_type(df: pd.DataFrame) -> str:
     if df.shape[1] < 2:
         return "unknown"
     target = df.iloc[:, -1]
+    if pd.api.types.is_bool_dtype(target):
+        return "classification"
     if not pd.api.types.is_numeric_dtype(target):
         return "classification"
-    n_unique = target.nunique(dropna=True)
-    if n_unique <= CLASSIFICATION_UNIQUE_THRESHOLD:
+
+    valid = target.dropna()
+    if valid.empty:
+        return "unknown"
+
+    n_unique = valid.nunique(dropna=True)
+    if n_unique <= 1:
         return "classification"
+
+    values = valid.to_numpy(dtype=float)
+    integer_like = np.all(np.isclose(values, np.round(values)))
+    if not integer_like:
+        return "regression"
+
+    n_rows = len(valid)
+    unique_ratio = n_unique / n_rows if n_rows else 1.0
+
+    # Integer-like targets can still be classification even when they have
+    # many classes, so prefer a size-aware rule instead of a fixed cutoff.
+    if n_unique <= CLASSIFICATION_MAX_INTEGER_UNIQUE_VALUES or unique_ratio <= CLASSIFICATION_MAX_UNIQUE_RATIO:
+        return "classification"
+
     return "regression"
 
 
