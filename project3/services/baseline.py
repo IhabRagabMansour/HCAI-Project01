@@ -3,8 +3,8 @@
 A TF-IDF vectorizer + multinomial logistic regression, wrapped in a single
 sklearn Pipeline so downstream code (deferral, active learning) can call
 ``predict`` / ``predict_proba`` directly on raw article text. Logistic
-regression is chosen over a linear SVM because it provides calibrated class
-probabilities natively — needed both for confidence-based deferral (Task 3) and
+regression is chosen over a linear SVM because it provides class-probability
+estimates via predict_proba() which are needed both for confidence-based deferral (Task 3) and
 for uncertainty-sampling active learning (Task 4).
 
 The fitted pipeline and its test-set evaluation are cached to disk (joblib), so
