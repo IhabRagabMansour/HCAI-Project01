@@ -658,6 +658,13 @@ class DashboardCounterfactualUITest(TestCase):
         self.assertContains(response, 'name="cf_target"')
         self.assertContains(response, 'name="cf_k"')
 
+    def test_target_dropdown_excludes_true_class(self):
+        from .services.data import get_penguin_data
+        data = get_penguin_data(42)
+        true0 = str(data.y_all.iloc[0])
+        response = self.client.get("/project2/dashboard/?cf_row=0")
+        self.assertNotContains(response, f'<option value="{true0}"')
+
     def test_shows_original_prediction(self):
         response = self.client.get("/project2/dashboard/?cf_row=0")
         self.assertContains(response, "Selected example")
@@ -685,6 +692,13 @@ class DashboardCounterfactualUITest(TestCase):
 
     def test_invalid_target_shows_prompt(self):
         response = self.client.get("/project2/dashboard/?cf_target=Dragon")
+        self.assertContains(response, "Choose a target species")
+
+    def test_true_class_target_is_ignored(self):
+        from .services.data import get_penguin_data
+        data = get_penguin_data(42)
+        true0 = str(data.y_all.iloc[0])
+        response = self.client.get(f"/project2/dashboard/?cf_row=0&cf_target={true0}")
         self.assertContains(response, "Choose a target species")
 
     def test_k_limits_rows(self):

@@ -109,7 +109,7 @@
             <label for="cf_target">Target species</label>
             <select name="cf_target" id="cf_target" form="p2-controls" class="p2-select">
                 <option value="">&mdash; choose &mdash;</option>
-                {% for sp in species %}
+                {% for sp in cf_target_choices %}
                     <option value="{{ sp }}"{% if sp == cf_target %} selected{% endif %}>{{ sp }}</option>
                 {% endfor %}
             </select>
