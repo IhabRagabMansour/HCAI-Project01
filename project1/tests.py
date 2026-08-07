@@ -905,6 +905,23 @@ class BuildEstimatorWithHyperparametersTest(TestCase):
         self.assertEqual(est.n_estimators, 50)
 
 
+class RandomSearchSpaceTest(TestCase):
+    def test_logreg_random_search_space_avoids_invalid_multiclass_combinations(self):
+        from .services.train import build_random_search_space
+
+        space = build_random_search_space("logreg", y_train=np.array([0, 1, 2]))
+        self.assertIsInstance(space, list)
+        self.assertGreaterEqual(len(space), 2)
+
+        for grid in space:
+            self.assertIn("solver", grid)
+            self.assertIn("penalty", grid)
+            self.assertNotIn("none", grid.get("class_weight", []))
+            self.assertNotIn("liblinear", grid["solver"])
+            self.assertNotIn("none", grid["penalty"])
+            self.assertIn(None, grid["class_weight"])
+
+
 class TrainAndScoreWithHyperparametersTest(TestCase):
     def test_pipeline_estimator_has_configured_hyperparameters(self):
         np.random.seed(0)
@@ -1155,6 +1172,37 @@ class TrainedModelCreateViewTest(TestCase):
             pipeline = joblib.load(f)
         est = pipeline.named_steps["estimator"]
         self.assertEqual(est.n_estimators, 31)
+
+    def test_random_search_mode_stores_best_hyperparameters(self):
+        from .models import TrainedModel
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "Random Search RF",
+            "algorithm": "rf_clf",
+            "metric": "accuracy",
+            "training_mode": "random_search",
+            "random_search_iterations": "5",
+            "cv_folds": "3",
+        })
+        m = TrainedModel.objects.first()
+        self.assertTrue(m.hyperparameters)
+        self.assertIn("search", m.evaluation)
+        self.assertEqual(m.evaluation["search"]["n_iter"], 5)
+        self.assertIn("accuracy", m.cv_scores)
+
+    def test_model_detail_shows_random_search_summary(self):
+        self.client.post(f"/project1/experiments/{self.experiment.pk}/models/new/", {
+            "name": "Random Search RF",
+            "algorithm": "rf_clf",
+            "metric": "accuracy",
+            "training_mode": "random_search",
+            "random_search_iterations": "5",
+            "cv_folds": "3",
+        })
+        from .models import TrainedModel
+        m = TrainedModel.objects.first()
+        response = self.client.get(f"/project1/models/{m.pk}/")
+        self.assertContains(response, "Randomized search")
+        self.assertContains(response, "trials")
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())

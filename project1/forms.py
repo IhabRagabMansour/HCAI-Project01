@@ -104,6 +104,27 @@ class ExperimentForm(forms.ModelForm):
 
 
 class TrainedModelForm(forms.ModelForm):
+    TRAINING_MODE_CHOICES = [
+        ("manual", "Manual hyperparameters"),
+        ("random_search", "Randomized search CV"),
+    ]
+
+    training_mode = forms.ChoiceField(
+        choices=TRAINING_MODE_CHOICES,
+        initial="manual",
+        label="Tuning mode",
+        widget=forms.RadioSelect,
+        required=False,
+    )
+    random_search_iterations = forms.IntegerField(
+        required=False,
+        initial=20,
+        min_value=5,
+        max_value=100,
+        label="Random search trials",
+        widget=forms.NumberInput(attrs={"min": "5", "max": "100", "step": "1"}),
+    )
+
     class Meta:
         model = TrainedModel
         fields = ["name", "algorithm", "metric", "cv_folds"]
@@ -124,6 +145,17 @@ class TrainedModelForm(forms.ModelForm):
         # cv_folds is optional in the form — falls back to 5 if blank
         self.fields["cv_folds"].required = False
         self.fields["cv_folds"].initial = 5
+        self.fields["random_search_iterations"].required = False
+
+    def clean_random_search_iterations(self):
+        v = self.cleaned_data.get("random_search_iterations")
+        if v in (None, ""):
+            return 20
+        return v
+
+    def clean_training_mode(self):
+        v = self.cleaned_data.get("training_mode")
+        return v or "manual"
 
     def clean_cv_folds(self):
         v = self.cleaned_data.get("cv_folds")

@@ -32,6 +32,16 @@
                 {% endif %}
             </td>
         </tr>
+        {% if model.evaluation.search %}
+        <tr>
+            <th>Randomized search</th>
+            <td>
+                <strong>{{ model.evaluation.search.n_iter }}</strong> trials,
+                {{ model.evaluation.search.cv_folds }}-fold CV,
+                best {{ model.metric_display }} = <strong>{{ model.evaluation.search.best_score|floatformat:4 }}</strong>
+            </td>
+        </tr>
+        {% endif %}
         <tr><th>Training time</th><td>{{ model.train_duration_ms }} ms</td></tr>
         {% if model.model_file_size_kb %}
         <tr><th>Model file</th><td>{{ model.model_file_size_kb }} KB</td></tr>

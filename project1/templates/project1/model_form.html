@@ -85,9 +85,37 @@
             </p>
             {% endif %}
         </div>
+
+        <div class="p1-form-group">
+            <label class="p1-label">Tuning mode</label>
+            {{ form.training_mode }}
+            <p class="p1-hint">
+                <strong>Manual hyperparameters</strong> keeps the current behavior and trains exactly once with the values you pick below.<br>
+                <strong>Randomized search CV</strong> samples hyperparameter combinations from the same bounds and choices, then trains the best candidate using cross-validation.
+            </p>
+            {% if form.training_mode.errors %}
+                <ul class="p1-field-errors">
+                    {% for e in form.training_mode.errors %}<li>{{ e }}</li>{% endfor %}
+                </ul>
+            {% endif %}
+        </div>
+
+        <div class="p1-form-group p1-random-search-section">
+            <label class="p1-label" for="{{ form.random_search_iterations.id_for_label }}">Random search trials</label>
+            {{ form.random_search_iterations }}
+            <p class="p1-hint">
+                Number of random combinations to try. Higher values search more of the space but take longer.
+                A range of 20-50 is a practical starting point.
+            </p>
+            {% if form.random_search_iterations.errors %}
+                <ul class="p1-field-errors">
+                    {% for e in form.random_search_iterations.errors %}<li>{{ e }}</li>{% endfor %}
+                </ul>
+            {% endif %}
+        </div>
     </div>
 
-    <div class="p1-section">
+    <div class="p1-section p1-manual-hp-section">
         <h2 class="p1-section-title">Hyperparameters</h2>
         <p class="p1-hint" style="text-align:center;">Defaults are pre-filled. Leave fields untouched to use sklearn's defaults.</p>
 

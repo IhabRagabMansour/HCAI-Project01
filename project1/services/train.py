@@ -6,12 +6,14 @@ from dataclasses import dataclass
 
 import joblib
 import numpy as np
+from scipy.stats import loguniform, randint, uniform
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import (
     accuracy_score, f1_score, mean_absolute_error, mean_squared_error,
     precision_score, r2_score, recall_score,
 )
+from sklearn.model_selection import RandomizedSearchCV
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.svm import SVC, SVR
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
@@ -294,6 +296,188 @@ class TrainResult:
     train_score: float
     test_score: float
     train_duration_ms: int
+
+
+def _metric_scoring_name(problem_type: str, metric: str) -> str:
+    if problem_type == "classification":
+        return {
+            "accuracy": "accuracy",
+            "f1": "f1_weighted",
+            "precision": "precision_weighted",
+            "recall": "recall_weighted",
+        }.get(metric, "accuracy")
+    return {
+        "r2": "r2",
+        "rmse": "neg_root_mean_squared_error",
+        "mae": "neg_mean_absolute_error",
+    }.get(metric, "r2")
+
+
+def _sample_values(spec: dict, *, n_iter: int = 20):
+    if spec["type"] == "choice":
+        return [c[0] for c in spec["choices"]]
+    if spec["type"] == "bool":
+        return [True, False]
+    if spec["type"] == "int":
+        low = int(spec["min"])
+        high = int(spec["max"])
+        if high <= low:
+            return [low]
+        return randint(low, high + 1)
+    if spec["type"] == "float":
+        low = float(spec["min"])
+        high = float(spec["max"])
+        if high <= low:
+            return [low]
+        if spec["key"] == "C":
+            return loguniform(low, high)
+        return uniform(low, high - low)
+    return None
+
+
+def _logreg_random_search_space(n_classes: int) -> list[dict]:
+    common = {
+        "class_weight": [None, "balanced"],
+        "C": loguniform(0.001, 1000.0),
+        "fit_intercept": [True, False],
+        "max_iter": randint(50, 10001),
+    }
+
+    spaces: list[dict] = [
+        {
+            **common,
+            "solver": ["lbfgs", "newton-cg"],
+            "penalty": ["l2"],
+        },
+        {
+            **common,
+            "solver": ["saga"],
+            "penalty": ["l1", "l2"],
+        },
+    ]
+
+    if n_classes <= 2:
+        spaces.append(
+            {
+                **common,
+                "solver": ["liblinear"],
+                "penalty": ["l1", "l2"],
+            }
+        )
+
+    return spaces
+
+
+def build_random_search_space(algorithm: str, n_iter: int = 20, problem_type: str | None = None,
+                             y_train=None):
+    if algorithm == "logreg":
+        n_classes = 2
+        if y_train is not None:
+            try:
+                n_classes = int(np.unique(y_train).size)
+            except Exception:
+                n_classes = 2
+        return _logreg_random_search_space(n_classes)
+
+    space: dict = {}
+    for spec in HYPERPARAM_SPECS.get(algorithm, []):
+        sampled = _sample_values(spec, n_iter=n_iter)
+        if sampled is not None:
+            if spec["key"] == "class_weight" and spec["type"] == "choice":
+                space[spec["key"]] = [None if c[0] == "none" else c[0] for c in spec["choices"]]
+            elif spec["key"] == "max_features" and spec["type"] == "choice":
+                space[spec["key"]] = [None if c[0] == "none" else c[0] for c in spec["choices"]]
+            else:
+                space[spec["key"]] = sampled
+    return space
+
+
+def _best_params_from_search(best_params: dict) -> dict:
+    out: dict = {}
+    for key, value in best_params.items():
+        if key.startswith("estimator__"):
+            out[key[len("estimator__"):]] = value
+        else:
+            out[key] = value
+    return out
+
+
+def train_with_random_search(
+    prepared: PreparedData,
+    algorithm: str,
+    metric: str,
+    problem_type: str,
+    random_seed: int = 42,
+    cv_folds: int = 5,
+    n_iter: int = 20,
+):
+    from .pipeline import build_full_pipeline, build_sampler
+
+    estimator = build_estimator(algorithm, random_seed)
+    oversampling = getattr(prepared, "oversampling", "none") or "none"
+    sampler = build_sampler(oversampling, random_seed)
+    pipeline = build_full_pipeline(prepared.preprocessing, estimator, sampler=sampler)
+
+    search_space = build_random_search_space(
+        algorithm,
+        n_iter=n_iter,
+        problem_type=problem_type,
+        y_train=prepared.y_train,
+    )
+    if not search_space:
+        raise ValueError(f"No tunable hyperparameters available for {algorithm!r}")
+
+    if isinstance(search_space, list):
+        param_distributions = [
+            {f"estimator__{k}": v for k, v in space.items()}
+            for space in search_space
+        ]
+    else:
+        param_distributions = {f"estimator__{k}": v for k, v in search_space.items()}
+
+    search = RandomizedSearchCV(
+        pipeline,
+        param_distributions=param_distributions,
+        n_iter=n_iter,
+        scoring=_metric_scoring_name(problem_type, metric),
+        cv=cv_folds,
+        random_state=random_seed,
+        n_jobs=1,
+        refit=True,
+    )
+
+    t0 = time.perf_counter()
+    search.fit(prepared.X_train, prepared.y_train)
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+
+    best_pipeline = search.best_estimator_
+    y_train_pred = best_pipeline.predict(prepared.X_train)
+    y_test_pred = best_pipeline.predict(prepared.X_test)
+
+    train_score = compute_score(prepared.y_train, y_train_pred, metric)
+    test_score = compute_score(prepared.y_test, y_test_pred, metric)
+
+    buf = io.BytesIO()
+    joblib.dump(best_pipeline, buf)
+
+    best_score = float(search.best_score_)
+    best_std = float(search.cv_results_["std_test_score"][search.best_index_])
+    if metric in {"rmse", "mae"}:
+        best_score = -best_score
+
+    return TrainResult(
+        pipeline=best_pipeline,
+        pipeline_bytes=buf.getvalue(),
+        train_score=train_score,
+        test_score=test_score,
+        train_duration_ms=elapsed_ms,
+    ), _best_params_from_search(search.best_params_), {
+        "best_score": best_score,
+        "best_std": best_std,
+        "cv_folds": cv_folds,
+        "n_iter": n_iter,
+        "scoring": _metric_scoring_name(problem_type, metric),
+    }
 
 
 # ── Estimator factory ───────────────────────────────────────────────────────
