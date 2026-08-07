@@ -129,13 +129,14 @@ def dashboard(request):
 
     cf_row = _parse_int(request.GET.get("cf_row"), default=0, lo=0, hi=n_rows - 1)
     cf_target = request.GET.get("cf_target", "")
-    if cf_target not in SPECIES_ORDER:
-        cf_target = ""
     cf_k = _parse_int(request.GET.get("cf_k"), default=CF_K_DEFAULT, lo=1, hi=10)
 
     x = data.X_all.iloc[cf_row].to_dict()
     x_true_class = str(data.y_all.iloc[cf_row])
     x_pred_class = str(selected.pipeline.predict(pd.DataFrame([x], columns=INPUT_FEATURES))[0])
+    cf_target_choices = [sp for sp in SPECIES_ORDER if sp != x_true_class]
+    if cf_target not in cf_target_choices:
+        cf_target = ""
 
     original_cells = [
         {"feature": f, "display": _fmt_value(f, x[f])} for f in INPUT_FEATURES
@@ -182,6 +183,7 @@ def dashboard(request):
             "complexity_label": complexity_label,
         },
         "species": SPECIES_ORDER,
+        "cf_target_choices": cf_target_choices,
         # Region A rendering: tree plot for trees; coefficient table for logreg
         "tree_png": tree_to_png_base64(selected.pipeline) if model_class == "tree" else None,
         "coef_table": coefficient_table(selected.pipeline) if model_class == "logreg" else None,
