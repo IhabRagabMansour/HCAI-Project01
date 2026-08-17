@@ -1,0 +1,75 @@
+{% extends 'project4/base.html' %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block project4_content %}
+
+<div class="p4-section">
+    <h2 class="p4-section-title">Preference Elicitation</h2>
+    <p class="p4-report">
+        A new user of a movie recommender has no rating history &mdash; the
+        <strong>cold-start</strong> problem. This project designs a user study comparing
+        two ways of learning a new user's taste from a small number of interactions:
+    </p>
+    <ul class="p4-report-list">
+        <li><strong>Design 1 &mdash; Pairwise:</strong> repeatedly show two movies and ask
+            which one the participant would rather watch.</li>
+        <li><strong>Design 2 &mdash; Ranking:</strong> show ten movies and ask the
+            participant to rank them from most to least preferred.</li>
+    </ul>
+    <p class="p4-report">
+        Each movie is described by a feature vector <code>x</code>, and each user by a
+        latent preference vector <code>w</code>, with utility
+        <code>U(x) = w<sup>T</sup>x</code>. The elicitation process estimates
+        <code>w</code> from the participant's responses: a Bradley&ndash;Terry model for
+        pairwise choices, extended to a Plackett&ndash;Luce model for full rankings.
+    </p>
+</div>
+
+<div class="p4-section">
+    <h2 class="p4-section-title">Dataset: IMDB 5000 Movies</h2>
+    <table class="p4-detail-table">
+        <tr><th>Source</th><td>IMDB 5000 Movie Dataset (<code>movie_metadata.csv</code>)</td></tr>
+        <tr><th>Movies after cleaning</th><td>{{ n_movies }}</td></tr>
+        <tr><th>Genres</th><td>{{ n_genres }}</td></tr>
+        <tr><th>Release years</th><td>{{ year_min }}&ndash;{{ year_max }}</td></tr>
+        <tr><th>User ratings</th><td><em>none</em> &mdash; preferences must be elicited from the participant</td></tr>
+    </table>
+    <p class="p4-hint">
+        Movies missing genres, duration, or release year are dropped; duplicate titles are
+        removed; missing content rating and country are recorded as &ldquo;Other&rdquo;.
+    </p>
+</div>
+
+<div class="p4-section">
+    <h2 class="p4-section-title">Example Movies</h2>
+    <div class="p4-table-scroll">
+        <table class="p4-table">
+            <thead>
+                <tr><th>Title</th><th>Year</th><th>Duration</th><th>Genres</th><th>Rating</th></tr>
+            </thead>
+            <tbody>
+                {% for m in sample_movies %}
+                <tr>
+                    <td class="p4-title-cell">{{ m.title }}</td>
+                    <td>{{ m.year }}</td>
+                    <td>{{ m.duration }} min</td>
+                    <td>{{ m.genres_display }}</td>
+                    <td>{{ m.content_rating }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="p4-hint">This is the information a participant sees when making a preference judgement.</p>
+</div>
+
+<div class="p4-section">
+    <div class="p4-msg p4-msg--info">
+        The <strong>Download report</strong> and <strong>Start study</strong> actions are
+        added in later stages, together with the preference models and the participant
+        interface.
+    </div>
+</div>
+
+{% endblock %}
