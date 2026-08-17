@@ -1,0 +1,51 @@
+{% extends 'project4/study_base.html' %}
+
+{% block study_content %}
+
+<div class="p4-section">
+    <h2 class="p4-section-title">Halfway &mdash; Take a Moment</h2>
+    <p class="p4-report">
+        That is the first interface finished. Feel free to pause here for as long
+        as you like; nothing is timed and the study will wait for you.
+    </p>
+</div>
+
+<div class="p4-section">
+    <div class="p4-howto">
+        <div class="p4-howto-card">
+            <h3>What changes now</h3>
+            {% if next_condition == "pairwise" %}
+            <p>The second half uses the <strong>two-film choice</strong> interface:
+            you see two films side by side and click the one you would rather watch.
+            There are {{ config.n_pairwise_trials }} of these.</p>
+            {% else %}
+            <p>The second half uses the <strong>ten-film ranking</strong> interface:
+            you put {{ config.ranking_size }} films in order from most to least
+            preferred, by dragging them or using the move buttons. There are
+            {{ config.n_ranking_trials }} of these.</p>
+            {% endif %}
+        </div>
+        <div class="p4-howto-card">
+            <h3>What stays the same</h3>
+            <p>Answer for <strong>yourself</strong>, not for what you think is the
+            better film. The films in this half are all ones you have not seen
+            during the study so far.</p>
+        </div>
+    </div>
+</div>
+
+<div class="p4-section">
+    <p class="p4-hint">
+        After the second interface there is one short set of questions and a
+        brief preference check, and then you are done.
+    </p>
+</div>
+
+<form method="post" class="p4-form">
+    {% csrf_token %}
+    <div class="p4-actions">
+        <button type="submit">I&rsquo;m ready &mdash; continue</button>
+    </div>
+</form>
+
+{% endblock %}

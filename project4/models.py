@@ -107,6 +107,31 @@ class RankingTrial(models.Model):
         unique_together = [("session", "block", "task_index")]
 
 
+class PreferenceModelFit(models.Model):
+    """The utility vector w fitted from one condition, and how well it predicts.
+
+    One row per (session, condition). Both rows are scored on the *same* held-out
+    pairs, which is what makes the two elicitation methods comparable.
+    """
+
+    session = models.ForeignKey(
+        StudySession, on_delete=models.CASCADE, related_name="fits",
+    )
+    condition = models.CharField(max_length=16, choices=CONDITION_CHOICES)
+    weights = models.JSONField()                  # d floats, aligned with X
+    n_observations = models.PositiveIntegerField(default=0)
+    heldout_accuracy = models.FloatField(null=True, blank=True)
+    heldout_log_loss = models.FloatField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["session_id", "condition"]
+        unique_together = [("session", "condition")]
+
+    def __str__(self):
+        return f"{self.session.participant_code} / {self.condition}"
+
+
 class QuestionnaireResponse(models.Model):
     """Background, per-condition, and final questionnaires."""
 

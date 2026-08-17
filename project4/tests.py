@@ -1225,3 +1225,512 @@ class RankingConditionTest(TestCase):
         body = response.content.decode()
         self.assertEqual(body.count('aria-label="Move '), 20)   # up+down per film
         self.assertIn('aria-live="polite"', body)
+
+
+# ── Stage P4-7: questionnaires, evaluation and debrief ─────────────────────
+
+class AnalysisServiceTest(TestCase):
+    """Fitting a session's two models and reading the result back."""
+
+    def _session(self, step="heldout"):
+        from .models import StudySession
+        return StudySession.objects.create(
+            condition_order="AB", seed=7, current_step=step)
+
+    def _add_pairwise(self, session, block, pairs):
+        from .models import PairwiseTrial
+        for index, (chosen, rejected) in enumerate(pairs):
+            PairwiseTrial.objects.create(
+                session=session, block=block, task_index=index,
+                left_movie_id=chosen, right_movie_id=rejected,
+                chosen_movie_id=chosen)
+
+    def _add_ranking(self, session, block, groups):
+        from .models import RankingTrial
+        for index, group in enumerate(groups):
+            RankingTrial.objects.create(
+                session=session, block=block, task_index=index,
+                movie_ids=sorted(group), ranked_movie_ids=list(group))
+
+    # ── reading the elicited data ───────────────────────────────────────────
+
+    def test_pairwise_pairs_are_chosen_then_rejected(self):
+        """The model's convention is (chosen, rejected), so the order matters."""
+        from .services.analysis import pairwise_pairs
+        session = self._session()
+        self._add_pairwise(session, "main", [(10, 20), (30, 40)])
+        self.assertEqual(pairwise_pairs(session), [(10, 20), (30, 40)])
+
+    def test_rankings_are_read_best_first(self):
+        from .services.analysis import rankings
+        session = self._session()
+        self._add_ranking(session, "main", [[3, 1, 2]])
+        self.assertEqual(rankings(session), [[3, 1, 2]])
+
+    # ── fitting ─────────────────────────────────────────────────────────────
+
+    def test_fit_creates_one_row_per_condition(self):
+        from .services.analysis import fit_session_models
+        from .services.features import get_features
+        session = self._session()
+        self._add_pairwise(session, "main", [(10, 20), (30, 40)])
+        self._add_ranking(session, "main", [[1, 2, 3]])
+
+        fits = fit_session_models(session)
+        _, encoder = get_features()
+        self.assertEqual(set(fits), {"pairwise", "ranking"})
+        for condition, fit in fits.items():
+            self.assertEqual(len(fit.weights), encoder.dim, condition)
+
+    def test_fit_records_how_much_data_each_condition_gave(self):
+        from .services.analysis import fit_session_models
+        session = self._session()
+        self._add_pairwise(session, "main", [(10, 20), (30, 40)])
+        self._add_ranking(session, "main", [[1, 2, 3]])
+        fits = fit_session_models(session)
+        self.assertEqual(fits["pairwise"].n_observations, 2)
+        self.assertEqual(fits["ranking"].n_observations, 1)
+
+    def test_fitting_twice_replaces_rather_than_duplicates(self):
+        from .models import PreferenceModelFit
+        from .services.analysis import fit_session_models
+        session = self._session()
+        self._add_pairwise(session, "main", [(10, 20)])
+        fit_session_models(session)
+        fit_session_models(session)
+        self.assertEqual(PreferenceModelFit.objects.filter(session=session).count(), 2)
+
+    def test_both_models_are_scored_on_the_same_heldout_pairs(self):
+        from .services.analysis import fit_session_models
+        session = self._session()
+        self._add_pairwise(session, "main", [(10, 20), (30, 40)])
+        self._add_ranking(session, "main", [[1, 2, 3]])
+        self._add_pairwise(session, "heldout", [(50, 60), (70, 80)])
+
+        fits = fit_session_models(session)
+        for condition, fit in fits.items():
+            self.assertIsNotNone(fit.heldout_accuracy, condition)
+            self.assertTrue(0.0 <= fit.heldout_accuracy <= 1.0, condition)
+            self.assertGreater(fit.heldout_log_loss, 0.0, condition)
+
+    def test_no_heldout_data_means_no_score_rather_than_a_fake_one(self):
+        from .services.analysis import fit_session_models
+        session = self._session()
+        self._add_pairwise(session, "main", [(10, 20)])
+        fits = fit_session_models(session)
+        self.assertIsNone(fits["pairwise"].heldout_accuracy)
+        self.assertIsNone(fits["pairwise"].heldout_log_loss)
+
+    def test_a_condition_with_no_data_still_fits_a_neutral_model(self):
+        """A participant who gave nothing gets w = 0, not a crash."""
+        from .services.analysis import fit_session_models
+        session = self._session()
+        self._add_pairwise(session, "main", [(10, 20)])
+        fits = fit_session_models(session)
+        self.assertEqual(fits["ranking"].n_observations, 0)
+        self.assertEqual(set(fits["ranking"].weights), {0.0})
+
+    # ── interpreting w ──────────────────────────────────────────────────────
+
+    def test_feature_names_are_humanized(self):
+        from .services.analysis import humanize_feature
+        self.assertEqual(humanize_feature("genre:Sci-Fi"), "Sci-Fi films")
+        self.assertEqual(humanize_feature("num:duration"), "longer films")
+        self.assertEqual(humanize_feature("num:title_year"), "more recent films")
+        self.assertEqual(humanize_feature("country:USA"), "films made in the USA")
+        self.assertEqual(humanize_feature("rating:Family"), "family-friendly films")
+
+    def test_top_features_ranks_by_signed_weight(self):
+        import numpy as np
+        from .services.analysis import top_features
+        from .services.features import get_features
+        _, encoder = get_features()
+        w = np.zeros(encoder.dim)
+        w[0], w[1] = 2.0, 1.0
+        w[2], w[3] = -3.0, -0.5
+
+        top = top_features(w, encoder, count=2)
+        self.assertEqual([f["name"] for f in top["liked"]],
+                         [encoder.feature_names[0], encoder.feature_names[1]])
+        self.assertEqual([f["name"] for f in top["disliked"]],
+                         [encoder.feature_names[2], encoder.feature_names[3]])
+
+    def test_top_features_drops_weights_that_say_nothing(self):
+        """A model that never moved a feature should not claim an opinion on it."""
+        import numpy as np
+        from .services.analysis import top_features
+        from .services.features import get_features
+        _, encoder = get_features()
+        w = np.zeros(encoder.dim)
+        w[0] = 1.5
+        top = top_features(w, encoder, count=5)
+        self.assertEqual(len(top["liked"]), 1)
+        self.assertEqual(top["disliked"], [])
+
+    # ── the debrief summary ─────────────────────────────────────────────────
+
+    def _summary_with(self, pairwise, ranking):
+        """`pairwise`/`ranking` are (accuracy, log_loss) for that condition."""
+        from .models import PreferenceModelFit
+        from .services.analysis import session_summary
+        from .services.features import get_features
+        _, encoder = get_features()
+        session = self._session(step="complete")
+        for condition, (accuracy, log_loss) in (("pairwise", pairwise),
+                                                ("ranking", ranking)):
+            PreferenceModelFit.objects.create(
+                session=session, condition=condition,
+                weights=[0.0] * encoder.dim, n_observations=5,
+                heldout_accuracy=accuracy, heldout_log_loss=log_loss)
+        return session_summary(session)
+
+    def test_summary_names_the_better_method(self):
+        summary = self._summary_with((0.9, 0.5), (0.6, 0.4))
+        self.assertEqual(summary["best"]["condition"], "pairwise")
+        self.assertFalse(summary["tied"])
+        # Accuracy decided it, so log loss never came into play.
+        self.assertFalse(summary["decided_on_log_loss"])
+
+    def test_equal_accuracy_is_broken_on_log_loss(self):
+        """Ten pairs give only eleven possible scores, so ties are common."""
+        summary = self._summary_with((0.7, 0.705), (0.7, 0.569))
+        self.assertEqual(summary["best"]["condition"], "ranking")
+        self.assertTrue(summary["decided_on_log_loss"])
+        self.assertFalse(summary["tied"])
+
+    def test_summary_reports_a_tie_rather_than_picking_one(self):
+        summary = self._summary_with((0.7, 0.5), (0.7, 0.5))
+        self.assertTrue(summary["tied"])
+        self.assertIsNone(summary["best"])
+        self.assertFalse(summary["decided_on_log_loss"])
+
+    def test_summary_converts_accuracy_to_a_percentage(self):
+        summary = self._summary_with((0.9, 0.5), (0.6, 0.4))
+        percents = {m["condition"]: m["accuracy_percent"] for m in summary["methods"]}
+        self.assertEqual(percents, {"pairwise": 90, "ranking": 60})
+
+
+class ClosingStepViewTest(TestCase):
+    """The questionnaire, break, held-out and debrief pages, in isolation."""
+
+    QUESTIONNAIRE_ANSWERS = {
+        "ease": "6", "effort": "3", "expressive": "5",
+        "confidence": "5", "willing": "4", "comment": "the ranking took longer",
+    }
+
+    FINAL_ANSWERS = {
+        "preferred": "pairwise", "expressive": "ranking",
+        "effort": "pairwise", "comment": "",
+    }
+
+    def _session(self):
+        from .models import StudySession
+        return StudySession.objects.first()
+
+    def _start(self, order="AB"):
+        self.client.post("/project4/study/start/")
+        session = self._session()
+        session.condition_order = order
+        session.save(update_fields=["condition_order"])
+        return session
+
+    def _jump(self, step):
+        session = self._session()
+        session.current_step = step
+        session.save(update_fields=["current_step"])
+        return session
+
+    def _plan(self):
+        from .services.sampling import DEFAULT_CONFIG, build_trial_plan
+        from .services.data import get_movie_corpus
+        return build_trial_plan(
+            self._session().seed, get_movie_corpus().n_movies, DEFAULT_CONFIG)
+
+    # ── per-condition questionnaire ─────────────────────────────────────────
+
+    def test_first_questionnaire_asks_about_the_first_condition(self):
+        self._start(order="AB")
+        self._jump("questionnaire_1")
+        response = self.client.get("/project4/study/questionnaire/")
+        self.assertContains(response, "choosing between two films")
+
+    def test_second_questionnaire_asks_about_the_second_condition(self):
+        self._start(order="AB")
+        self._jump("questionnaire_2")
+        response = self.client.get("/project4/study/questionnaire/")
+        self.assertContains(response, "ranking ten films")
+
+    def test_questionnaire_follows_the_counterbalancing(self):
+        """Order BA did ranking first, so its first questionnaire must ask that."""
+        self._start(order="BA")
+        self._jump("questionnaire_1")
+        response = self.client.get("/project4/study/questionnaire/")
+        self.assertContains(response, "ranking ten films")
+
+    def test_questionnaire_offers_a_full_likert_scale(self):
+        self._start()
+        self._jump("questionnaire_1")
+        response = self.client.get("/project4/study/questionnaire/")
+        self.assertEqual(response.content.decode().count('type="radio"'), 35)
+
+    def test_questionnaire_answers_are_stored_against_the_condition(self):
+        from .models import QuestionnaireResponse
+        self._start(order="AB")
+        self._jump("questionnaire_1")
+        self.client.post("/project4/study/questionnaire/", self.QUESTIONNAIRE_ANSWERS)
+
+        answer = QuestionnaireResponse.objects.get(kind="condition")
+        self.assertEqual(answer.condition, "pairwise")
+        self.assertEqual(answer.answers["ease"], "6")
+        self.assertEqual(answer.answers["comment"], "the ranking took longer")
+
+    def test_questionnaire_advances_the_step(self):
+        self._start()
+        self._jump("questionnaire_1")
+        self.client.post("/project4/study/questionnaire/", self.QUESTIONNAIRE_ANSWERS)
+        self.assertEqual(self._session().current_step, "break")
+
+    def test_questionnaire_url_is_guarded(self):
+        self._start()
+        self._jump("break")
+        response = self.client.get("/project4/study/questionnaire/")
+        self.assertRedirects(response, "/project4/study/", target_status_code=302)
+
+    # ── break ───────────────────────────────────────────────────────────────
+
+    def test_break_previews_the_interface_that_comes_next(self):
+        self._start(order="AB")          # pairwise done, ranking next
+        self._jump("break")
+        response = self.client.get("/project4/study/break/")
+        self.assertContains(response, "ten-film ranking")
+
+    def test_break_preview_follows_the_counterbalancing(self):
+        self._start(order="BA")          # ranking done, pairwise next
+        self._jump("break")
+        response = self.client.get("/project4/study/break/")
+        self.assertContains(response, "two-film choice")
+
+    def test_break_advances_to_the_second_condition(self):
+        self._start()
+        self._jump("break")
+        self.client.post("/project4/study/break/")
+        self.assertEqual(self._session().current_step, "condition_2")
+
+    # ── held-out preference check ───────────────────────────────────────────
+
+    def test_heldout_explains_why_it_is_being_asked(self):
+        self._start()
+        self._jump("heldout")
+        response = self.client.get("/project4/study/check/")
+        self.assertContains(response, "preference check")
+        self.assertContains(response, "Task 1 of 10")
+
+    def test_heldout_uses_the_planned_pairs(self):
+        self._start()
+        self._jump("heldout")
+        left, right = self._plan().heldout[0]
+        response = self.client.get("/project4/study/check/")
+        body = response.content.decode()
+        self.assertIn(f'value="{left}"', body)
+        self.assertIn(f'value="{right}"', body)
+
+    def test_heldout_choices_are_stored_in_their_own_block(self):
+        from .models import PairwiseTrial
+        self._start()
+        self._jump("heldout")
+        left, _ = self._plan().heldout[0]
+        self.client.post("/project4/study/check/", {"chosen_movie_id": str(left)})
+        self.assertEqual(PairwiseTrial.objects.filter(block="heldout").count(), 1)
+
+    def test_heldout_movies_were_never_shown_in_either_condition(self):
+        """The evaluation must test generalization, not recall."""
+        self._start()
+        plan = self._plan()
+        heldout_ids = {m for pair in plan.heldout for m in pair}
+        shown_ids = {m for pair in plan.pairwise for m in pair}
+        shown_ids |= {m for group in plan.ranking for m in group}
+        shown_ids |= {m for pair in plan.practice_pairwise for m in pair}
+        shown_ids |= {m for group in plan.practice_ranking for m in group}
+        self.assertEqual(heldout_ids & shown_ids, set())
+
+    def test_completing_the_check_fits_both_models(self):
+        from .models import PreferenceModelFit
+        self._start()
+        self._jump("heldout")
+        for left, _ in self._plan().heldout:
+            self.client.post("/project4/study/check/", {"chosen_movie_id": str(left)})
+        self.client.get("/project4/study/", follow=True)
+
+        self.assertEqual(self._session().current_step, "final")
+        self.assertEqual(
+            set(PreferenceModelFit.objects.values_list("condition", flat=True)),
+            {"pairwise", "ranking"})
+
+    # ── final comparison ────────────────────────────────────────────────────
+
+    def test_final_names_the_interfaces_not_their_order(self):
+        """Which came first differs per participant, so the labels must not say."""
+        self._start()
+        self._jump("final")
+        response = self.client.get("/project4/study/final/")
+        self.assertContains(response, "Choosing between two films")
+        self.assertContains(response, "Ranking ten films")
+        self.assertNotContains(response, "the first interface")
+
+    def test_final_answers_are_stored_and_the_session_is_marked_complete(self):
+        from .models import QuestionnaireResponse
+        self._start()
+        self._jump("final")
+        self.client.post("/project4/study/final/", self.FINAL_ANSWERS)
+
+        answer = QuestionnaireResponse.objects.get(kind="final")
+        self.assertEqual(answer.answers["preferred"], "pairwise")
+        session = self._session()
+        self.assertEqual(session.current_step, "complete")
+        self.assertIsNotNone(session.completed_at)
+        self.assertTrue(session.is_complete)
+
+    # ── debrief ─────────────────────────────────────────────────────────────
+
+    def test_debrief_is_not_reachable_before_the_end(self):
+        self._start()
+        self._jump("final")
+        response = self.client.get("/project4/study/complete/")
+        self.assertRedirects(response, "/project4/study/", target_status_code=302)
+
+    def test_debrief_shows_the_participant_code_and_both_methods(self):
+        self._start()
+        self._jump("complete")
+        response = self.client.get("/project4/study/complete/")
+        self.assertContains(response, self._session().participant_code)
+        self.assertContains(response, "Choosing between two films")
+        self.assertContains(response, "Ranking ten films")
+
+    def test_debrief_explains_how_to_withdraw(self):
+        self._start()
+        self._jump("complete")
+        response = self.client.get("/project4/study/complete/")
+        self.assertContains(response, "removed")
+
+
+class FullStudyWalkthroughTest(TestCase):
+    """One participant, start to finish, through all twelve steps."""
+
+    def _session(self):
+        from .models import StudySession
+        return StudySession.objects.first()
+
+    def _plan(self):
+        from .services.sampling import DEFAULT_CONFIG, build_trial_plan
+        from .services.data import get_movie_corpus
+        return build_trial_plan(
+            self._session().seed, get_movie_corpus().n_movies, DEFAULT_CONFIG)
+
+    def _pairwise_block(self, url, pairs):
+        for chosen, _ in pairs:
+            self.client.post(url, {"chosen_movie_id": str(chosen),
+                                   "response_time_ms": "1400"})
+
+    def _ranking_block(self, url, groups):
+        for group in groups:
+            self.client.post(url, {
+                "ranked_movie_ids": ",".join(str(m) for m in group),
+                "response_time_ms": "11000"})
+
+    def _run(self, which, plan, url, practice=False):
+        if which == "pairwise":
+            self._pairwise_block(
+                url, plan.practice_pairwise if practice else plan.pairwise)
+        else:
+            self._ranking_block(
+                url, plan.practice_ranking if practice else plan.ranking)
+
+    def _walk(self, order="AB"):
+        from .services.study import conditions_for_order
+        self.client.post("/project4/study/start/")
+        session = self._session()
+        session.condition_order = order
+        session.save(update_fields=["condition_order"])
+
+        self.client.post("/project4/study/consent/", {"consent": "on"})
+        self.client.post("/project4/study/background/", {
+            "age_range": "25-34", "movie_frequency": "weekly",
+            "recommender_familiarity": "somewhat"})
+        self.client.post("/project4/study/instructions/")
+
+        plan = self._plan()
+        conditions = conditions_for_order(order)
+
+        for which in conditions:
+            self._run(which, plan, "/project4/study/practice/", practice=True)
+        self.client.get("/project4/study/", follow=True)
+
+        answers = {"ease": "5", "effort": "4", "expressive": "5",
+                   "confidence": "5", "willing": "5", "comment": ""}
+        for index, which in enumerate(conditions):
+            self._run(which, plan, "/project4/study/condition/")
+            self.client.get("/project4/study/", follow=True)
+            self.client.post("/project4/study/questionnaire/", answers)
+            if index == 0:
+                self.client.post("/project4/study/break/")
+
+        self._pairwise_block("/project4/study/check/", plan.heldout)
+        self.client.get("/project4/study/", follow=True)
+        self.client.post("/project4/study/final/", {
+            "preferred": "ranking", "expressive": "ranking",
+            "effort": "pairwise", "comment": "interesting study"})
+        return plan
+
+    def test_a_full_run_reaches_the_debrief(self):
+        self._walk()
+        session = self._session()
+        self.assertEqual(session.current_step, "complete")
+        self.assertTrue(session.is_complete)
+        response = self.client.get("/project4/study/complete/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_a_full_run_collects_the_planned_amount_of_data(self):
+        from .models import PairwiseTrial, QuestionnaireResponse, RankingTrial
+        from .services.sampling import DEFAULT_CONFIG as cfg
+        self._walk()
+        session = self._session()
+
+        self.assertEqual(
+            PairwiseTrial.objects.filter(session=session, block="main").count(),
+            cfg.n_pairwise_trials)
+        self.assertEqual(
+            RankingTrial.objects.filter(session=session, block="main").count(),
+            cfg.n_ranking_trials)
+        self.assertEqual(
+            PairwiseTrial.objects.filter(session=session, block="heldout").count(),
+            cfg.n_heldout_pairs)
+        self.assertEqual(
+            QuestionnaireResponse.objects.filter(session=session).count(), 4)
+
+    def test_a_full_run_in_the_reverse_order_works_too(self):
+        """Counterbalancing must not be a path only one group can walk."""
+        self._walk(order="BA")
+        self.assertEqual(self._session().current_step, "complete")
+
+    def test_the_debrief_reports_a_real_score_for_both_methods(self):
+        self._walk()
+        response = self.client.get("/project4/study/complete/")
+        summary = response.context["summary"]
+        self.assertEqual(len(summary["methods"]), 2)
+        for method in summary["methods"]:
+            self.assertIsNotNone(method["accuracy"], method["condition"])
+            self.assertTrue(0.0 <= method["accuracy"] <= 1.0)
+        self.assertEqual(summary["n_heldout"], 10)
+
+    def test_every_ranking_stored_is_a_permutation_of_what_was_shown(self):
+        from .models import RankingTrial
+        self._walk()
+        for trial in RankingTrial.objects.all():
+            self.assertEqual(sorted(trial.movie_ids), sorted(trial.ranked_movie_ids))
+            self.assertEqual(len(trial.ranked_movie_ids), 10)
+
+    def test_no_movie_is_ever_shown_to_a_participant_twice(self):
+        """Every trial the participant saw, across every block, is distinct."""
+        plan = self._walk()
+        ids = plan.all_movie_ids
+        self.assertEqual(len(ids), len(set(ids)))

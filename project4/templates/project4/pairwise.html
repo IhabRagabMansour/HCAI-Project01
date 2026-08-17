@@ -9,6 +9,12 @@
         <strong>Practice.</strong> This one does not count &mdash; it is just to show you
         how the interface works.
     </div>
+    {% elif is_heldout %}
+    <div class="p4-msg p4-msg--info">
+        <strong>Last part: a quick preference check.</strong> A few more two-film
+        choices, all with films you have not seen so far in the study. These let us
+        check how well each interface managed to learn your taste.
+    </div>
     {% endif %}
 
     <h2 class="p4-section-title">Which would you rather watch?</h2>

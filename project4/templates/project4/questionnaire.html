@@ -1,0 +1,45 @@
+{% extends 'project4/study_base.html' %}
+
+{% block study_content %}
+
+<div class="p4-section">
+    <h2 class="p4-section-title">How Was That?</h2>
+    <p class="p4-report">
+        These questions are about the interface you have just used &mdash;
+        <strong>{{ condition_label }}</strong>. There are no right answers; we are
+        asking how the <em>interface</em> felt, not how well you did.
+    </p>
+</div>
+
+<form method="post" class="p4-form p4-form--wide">
+    {% csrf_token %}
+
+    {% for question in questions %}
+    <div class="p4-likert">
+        <p class="p4-likert-question">{{ forloop.counter }}. {{ question.text }}</p>
+        <div class="p4-likert-scale">
+            <span class="p4-likert-anchor">{{ question.low }}</span>
+            {% for point in scale_points %}
+            <label class="p4-likert-point">
+                <input type="radio" name="{{ question.name }}" value="{{ point }}" required>
+                <span>{{ point }}</span>
+            </label>
+            {% endfor %}
+            <span class="p4-likert-anchor">{{ question.high }}</span>
+        </div>
+    </div>
+    {% endfor %}
+
+    <div class="p4-field">
+        <label for="comment">Anything you would like to add about this interface?
+            (optional)</label>
+        <textarea name="comment" id="comment" rows="3"
+                  placeholder="Optional &mdash; leave blank if you have nothing to add."></textarea>
+    </div>
+
+    <div class="p4-actions">
+        <button type="submit">Continue</button>
+    </div>
+</form>
+
+{% endblock %}

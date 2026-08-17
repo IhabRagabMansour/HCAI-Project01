@@ -116,6 +116,24 @@ def is_condition_step(step: str) -> bool:
     return step in (CONDITION_1, CONDITION_2)
 
 
+# Each per-condition questionnaire asks about the condition just finished.
+QUESTIONNAIRE_CONDITION_STEP = {
+    QUESTIONNAIRE_1: CONDITION_1,
+    QUESTIONNAIRE_2: CONDITION_2,
+}
+
+
+def is_questionnaire_step(step: str) -> bool:
+    return step in QUESTIONNAIRE_CONDITION_STEP
+
+
+def condition_for_questionnaire(step: str, order: str) -> str:
+    """Which condition a per-condition questionnaire is asking about."""
+    if step not in QUESTIONNAIRE_CONDITION_STEP:
+        raise ValueError(f"{step!r} is not a per-condition questionnaire step")
+    return condition_for_step(QUESTIONNAIRE_CONDITION_STEP[step], order)
+
+
 def progress(step: str) -> dict:
     """Progress summary for the participant-facing header."""
     return {

@@ -1,0 +1,150 @@
+{% extends 'project4/study_base.html' %}
+
+{% block study_content %}
+
+<div class="p4-section">
+    <div class="p4-msg p4-msg--success">
+        <strong>You&rsquo;re finished &mdash; thank you.</strong> Your responses have
+        been recorded under the code <code>{{ session.participant_code }}</code>.
+    </div>
+
+    <h2 class="p4-section-title">What This Study Was Testing</h2>
+    <p class="p4-report">
+        Both interfaces were fitting the <em>same</em> kind of model of your taste:
+        a weight for each film property &mdash; genre, length, era, rating, origin
+        &mdash; that together predict which of two films you would pick. What
+        differed was only <strong>how you were asked</strong>: a series of choices
+        between two films, or a few rankings of ten. The question is whether one of
+        those ways teaches the model more about you per unit of your effort.
+    </p>
+</div>
+
+{% if summary.methods %}
+<div class="p4-section">
+    <h2 class="p4-section-title">How Well Each One Predicted You</h2>
+    <p class="p4-report">
+        After both interfaces you made {{ summary.n_heldout }} extra choices between
+        films you had <strong>not seen anywhere else in the study</strong>. Neither
+        model was trained on those, so they are a fair test &mdash; and both models
+        were tested on exactly the same ones.
+    </p>
+
+    <div class="p4-table-scroll">
+        <table class="p4-table">
+            <thead>
+                <tr>
+                    <th>Interface</th>
+                    <th>What you gave it</th>
+                    <th>Correct on the {{ summary.n_heldout }} check questions</th>
+                    <th>Log loss</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for method in summary.methods %}
+                <tr>
+                    <td class="p4-title-cell">{{ method.label }}</td>
+                    <td>
+                        {{ method.n_observations }}
+                        {% if method.condition == "pairwise" %}choices{% else %}rankings{% endif %}
+                    </td>
+                    <td>
+                        {% if method.accuracy_percent is None %}&mdash;
+                        {% else %}{{ method.accuracy_percent }}%{% endif %}
+                    </td>
+                    <td>
+                        {% if method.log_loss is None %}&mdash;
+                        {% else %}{{ method.log_loss|floatformat:3 }}{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <p class="p4-hint">
+        Lower log loss is better: it rewards being confident and right, and
+        punishes being confident and wrong.
+    </p>
+
+    {% if summary.tied %}
+    <p class="p4-report">
+        For you, the two interfaces came out <strong>level</strong> on this check
+        &mdash; same number right, and equally confident about it.
+    </p>
+    {% elif summary.decided_on_log_loss %}
+    <p class="p4-report">
+        Both interfaces got the <strong>same number</strong> of check questions
+        right, but <strong>{{ summary.best.label|lower }}</strong> was the more
+        confident of the two where it counted. With only {{ summary.n_heldout }}
+        questions there are very few possible scores, so ties on the raw count are
+        common &mdash; which is exactly why the log loss column is there.
+    </p>
+    {% elif summary.best %}
+    <p class="p4-report">
+        For you, <strong>{{ summary.best.label|lower }}</strong> predicted the check
+        questions better. That is a result about <em>you</em>, on
+        {{ summary.n_heldout }} questions &mdash; far too few to settle which
+        interface is better in general. Only pooling many participants can do that,
+        which is exactly why this study is run the way it is.
+    </p>
+    {% endif %}
+</div>
+
+<div class="p4-section">
+    <h2 class="p4-section-title">What Each Interface Learned About Your Taste</h2>
+    <p class="p4-report">
+        These are the film properties that pushed a film&rsquo;s score up or down
+        most in each fitted model. Read them as tendencies, not verdicts &mdash;
+        with this few answers the model is a rough sketch, deliberately kept
+        cautious so that a handful of choices cannot make it wildly overconfident.
+    </p>
+
+    <div class="p4-howto">
+        {% for method in summary.methods %}
+        <div class="p4-howto-card">
+            <h3>{{ method.label }}</h3>
+            {% if method.features.liked %}
+            <p><strong>Pulled towards:</strong></p>
+            <ul class="p4-feature-list">
+                {% for feature in method.features.liked %}
+                <li>{{ feature.label }}
+                    <span class="p4-weight p4-weight--up">+{{ feature.weight|floatformat:2 }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% if method.features.disliked %}
+            <p><strong>Pulled away from:</strong></p>
+            <ul class="p4-feature-list">
+                {% for feature in method.features.disliked %}
+                <li>{{ feature.label }}
+                    <span class="p4-weight p4-weight--down">{{ feature.weight|floatformat:2 }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% if not method.features.liked and not method.features.disliked %}
+            <p>This model came out flat &mdash; not enough signal to lean either way.</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="p4-section">
+    <h2 class="p4-section-title">Your Data</h2>
+    <ul class="p4-report-list">
+        <li>Everything stored is tied only to the code
+            <code>{{ session.participant_code }}</code>. No name, email, or anything
+            else that identifies you was ever collected.</li>
+        <li>What was recorded: your choices and rankings, how long each task took,
+            and your questionnaire answers.</li>
+        <li>If you want your data removed, quote that code to whoever gave you this
+            link &mdash; it is the only way to find your record, and without it your
+            responses cannot be traced back to you.</li>
+    </ul>
+    <p class="p4-hint">You can close this page now. Thank you for taking part.</p>
+</div>
+
+{% endblock %}

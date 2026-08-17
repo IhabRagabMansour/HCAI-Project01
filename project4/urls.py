@@ -15,4 +15,9 @@ urlpatterns = [
     path("study/instructions/", views.instructions, name="instructions"),
     path("study/practice/", views.practice, name="practice"),
     path("study/condition/", views.condition, name="condition"),
+    path("study/questionnaire/", views.questionnaire, name="questionnaire"),
+    path("study/break/", views.study_break, name="study_break"),
+    path("study/check/", views.heldout, name="heldout"),
+    path("study/final/", views.final, name="final"),
+    path("study/complete/", views.complete, name="complete"),
 ]

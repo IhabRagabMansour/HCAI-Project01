@@ -1,0 +1,43 @@
+{% extends 'project4/study_base.html' %}
+
+{% block study_content %}
+
+<div class="p4-section">
+    <h2 class="p4-section-title">One Last Comparison</h2>
+    <p class="p4-report">
+        You have now used both interfaces. These last few questions ask you to
+        compare them directly. Please answer from your own experience &mdash; we
+        have not shown you any results yet, precisely so that your answers here
+        are not influenced by them.
+    </p>
+</div>
+
+<form method="post" class="p4-form p4-form--wide">
+    {% csrf_token %}
+
+    {% for question in questions %}
+    <div class="p4-likert">
+        <p class="p4-likert-question">{{ forloop.counter }}. {{ question.text }}</p>
+        <div class="p4-choice-row">
+            {% for value, label in options %}
+            <label class="p4-choice">
+                <input type="radio" name="{{ question.name }}" value="{{ value }}" required>
+                <span>{{ label }}</span>
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+
+    <div class="p4-field">
+        <label for="comment">Anything else you would like to tell us? (optional)</label>
+        <textarea name="comment" id="comment" rows="3"
+                  placeholder="Optional &mdash; leave blank if you have nothing to add."></textarea>
+    </div>
+
+    <div class="p4-actions">
+        <button type="submit">Finish the study</button>
+    </div>
+</form>
+
+{% endblock %}

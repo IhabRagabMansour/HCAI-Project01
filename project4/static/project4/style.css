@@ -555,3 +555,134 @@
     color: #275CB2;
     text-align: center;
 }
+
+/* ── Questionnaires ── */
+.p4-form--wide {
+    max-width: 760px;
+}
+
+.p4-form textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 15px;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    resize: vertical;
+}
+
+.p4-likert {
+    margin-bottom: 22px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #eee;
+}
+
+.p4-likert-question {
+    font-size: 15px;
+    color: #333;
+    margin: 0 0 10px;
+    line-height: 1.5;
+}
+
+.p4-likert-scale {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.p4-likert-anchor {
+    font-size: 12.5px;
+    color: #777;
+    flex: 1;
+    min-width: 90px;
+}
+
+.p4-likert-anchor:last-child {
+    text-align: right;
+}
+
+/* The number sits under its radio, so the whole point is one click target. */
+.p4-likert-point {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    font-size: 12px;
+    color: #666;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+
+.p4-likert-point:hover {
+    background: #f4f7fc;
+}
+
+.p4-likert-point input[type="radio"] {
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.p4-choice-row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.p4-choice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    border: 1px solid #d7dee9;
+    border-radius: 5px;
+    font-size: 14px;
+    color: #333;
+    cursor: pointer;
+    background: #fff;
+}
+
+.p4-choice:hover {
+    border-color: #275CB2;
+    background: #f4f7fc;
+}
+
+.p4-choice input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    cursor: pointer;
+}
+
+/* ── Debrief: learned feature weights ── */
+.p4-feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 4px 0 12px;
+    font-size: 13.5px;
+    color: #333;
+}
+
+.p4-feature-list li {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 3px 0;
+    border-bottom: 1px dotted #e3e8f0;
+}
+
+.p4-weight {
+    font-variant-numeric: tabular-nums;
+    font-size: 12.5px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.p4-weight--up { color: #1a7f37; }
+.p4-weight--down { color: #b3261e; }

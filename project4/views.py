@@ -1,19 +1,21 @@
 import numpy as np
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 
 from .models import (
     BLOCK_HELDOUT, BLOCK_MAIN, BLOCK_PRACTICE,
     PairwiseTrial, QuestionnaireResponse, RankingTrial, StudySession,
 )
 from .services import study as study_flow
+from .services.analysis import fit_session_models, session_summary
 from .services.data import get_movie_corpus, genre_vocabulary
 from .services.features import describe_feature_groups, get_features
 from .services.sampling import DEFAULT_CONFIG, build_trial_plan, new_session_seed
 
 SESSION_KEY = "project4_session_pk"
 
-# Which URL serves each step. Steps not listed yet are served by the
-# placeholder view until their stage lands.
+# Which URL serves each step. Anything unmapped falls back to the placeholder,
+# so an unknown step can never dead-end a participant.
 STEP_URL_NAMES = {
     study_flow.CONSENT: "project4:consent",
     study_flow.BACKGROUND: "project4:background",
@@ -21,6 +23,12 @@ STEP_URL_NAMES = {
     study_flow.PRACTICE: "project4:practice",
     study_flow.CONDITION_1: "project4:condition",
     study_flow.CONDITION_2: "project4:condition",
+    study_flow.QUESTIONNAIRE_1: "project4:questionnaire",
+    study_flow.QUESTIONNAIRE_2: "project4:questionnaire",
+    study_flow.BREAK: "project4:study_break",
+    study_flow.HELDOUT: "project4:heldout",
+    study_flow.FINAL: "project4:final",
+    study_flow.COMPLETE: "project4:complete",
 }
 
 
@@ -182,13 +190,18 @@ def consent(request):
 BACKGROUND_FIELDS = ["age_range", "movie_frequency", "recommender_familiarity"]
 
 
+def _answers(request, fields) -> dict:
+    """Collect a questionnaire's fields; a skipped optional item stores as ''."""
+    return {field: request.POST.get(field, "") for field in fields}
+
+
 def background(request):
     """Step 2 — short background questionnaire (no identifying data)."""
     def handle(request, session):
         QuestionnaireResponse.objects.create(
             session=session,
             kind=QuestionnaireResponse.KIND_BACKGROUND,
-            answers={f: request.POST.get(f, "") for f in BACKGROUND_FIELDS},
+            answers=_answers(request, BACKGROUND_FIELDS),
         )
 
     return _step_view(
@@ -251,7 +264,8 @@ def _record_pairwise(request, session, block, index, pair) -> bool:
     return True
 
 
-def _run_pairwise_block(request, session, block, pairs, *, step, title, is_practice=False):
+def _run_pairwise_block(request, session, block, pairs, *, step, title,
+                        is_practice=False, is_heldout=False):
     """One trial of a pairwise block, or None once the block is finished."""
     index = _pairwise_done_count(session, block)
     if index >= len(pairs):
@@ -272,6 +286,7 @@ def _run_pairwise_block(request, session, block, pairs, *, step, title, is_pract
         "trial_number": index + 1,
         "trial_total": len(pairs),
         "is_practice": is_practice,
+        "is_heldout": is_heldout,
     })
 
 
@@ -422,3 +437,170 @@ def condition(request):
 
     _advance(session, step)
     return redirect("project4:study")
+
+
+# ── Questionnaires, break, evaluation and debrief ───────────────────────────
+
+LIKERT_POINTS = [1, 2, 3, 4, 5, 6, 7]
+
+# Asked after each condition, about the interface just used. Note that `effort`
+# runs in the opposite direction to the rest on purpose: a participant who stops
+# reading and straight-lines the scale produces a visibly inconsistent pattern.
+CONDITION_QUESTIONS = [
+    {"name": "ease",
+     "text": "How easy was this way of giving your preferences?",
+     "low": "Very difficult", "high": "Very easy"},
+    {"name": "effort",
+     "text": "How much mental effort did it take?",
+     "low": "Very little", "high": "A great deal"},
+    {"name": "expressive",
+     "text": "How well did it let you express what you actually like?",
+     "low": "Not at all", "high": "Very well"},
+    {"name": "confidence",
+     "text": "How confident are you that your answers reflect your real taste?",
+     "low": "Not at all", "high": "Completely"},
+    {"name": "willing",
+     "text": "Would you be willing to answer many more questions in this format?",
+     "low": "Definitely not", "high": "Definitely"},
+]
+
+CONDITION_LABELS = {
+    study_flow.PAIRWISE: "choosing between two films",
+    study_flow.RANKING: "ranking ten films",
+}
+
+# The final comparison names the interfaces rather than "the first" and "the
+# second", because which came first differs between participants.
+FINAL_OPTIONS = [
+    (study_flow.PAIRWISE, "Choosing between two films"),
+    (study_flow.RANKING, "Ranking ten films"),
+    ("none", "No difference"),
+]
+
+FINAL_QUESTIONS = [
+    {"name": "preferred", "text": "Which did you prefer overall?"},
+    {"name": "expressive", "text": "Which one better captured your actual taste?"},
+    {"name": "effort", "text": "Which one felt less effortful?"},
+]
+
+
+def questionnaire(request):
+    """Steps 6 & 9 — subjective measures for the condition just finished."""
+    session = _require_session(request)
+    if session is None:
+        return redirect("project4:index")
+    step = session.current_step
+    if not study_flow.is_questionnaire_step(step):
+        return redirect("project4:study")
+
+    which = study_flow.condition_for_questionnaire(step, session.condition_order)
+
+    def handle(request, session):
+        QuestionnaireResponse.objects.create(
+            session=session,
+            kind=QuestionnaireResponse.KIND_CONDITION,
+            condition=which,
+            answers=_answers(
+                request, [q["name"] for q in CONDITION_QUESTIONS] + ["comment"]),
+        )
+
+    return _step_view(
+        request, step, "project4/questionnaire.html",
+        context={
+            "title": "How Was That?",
+            "questions": CONDITION_QUESTIONS,
+            "scale_points": LIKERT_POINTS,
+            "condition": which,
+            "condition_label": CONDITION_LABELS[which],
+        },
+        on_post=handle,
+    )
+
+
+def study_break(request):
+    """Step 7 — a pause, and a heads-up that the interface is about to change."""
+    session = _current_session(request)
+    order = session.condition_order if session else study_flow.ORDER_AB
+    next_condition = study_flow.conditions_for_order(order)[1]
+
+    return _step_view(
+        request, study_flow.BREAK, "project4/break.html",
+        context={
+            "title": "Short Break",
+            "config": DEFAULT_CONFIG,
+            "next_condition": next_condition,
+            "next_condition_label": CONDITION_LABELS[next_condition],
+        },
+    )
+
+
+def heldout(request):
+    """Step 10 — the shared evaluation set, in pairwise form for both conditions.
+
+    Everyone answers the same kind of question here, whatever they did earlier,
+    so the two fitted models are judged against one common yardstick.
+    """
+    session = _require_session(request)
+    if session is None:
+        return redirect("project4:index")
+    if session.current_step != study_flow.HELDOUT:
+        return redirect("project4:study")
+
+    response = _run_pairwise_block(
+        request, session, BLOCK_HELDOUT, _plan_for(session).heldout,
+        step=study_flow.HELDOUT, title="Preference check", is_heldout=True,
+    )
+    if response is not None:
+        return response
+
+    # Every ingredient is now in place: both conditions' data and the held-out
+    # answers to score them on.
+    fit_session_models(session)
+    _advance(session, study_flow.HELDOUT)
+    return redirect("project4:study")
+
+
+def final(request):
+    """Step 11 — the head-to-head comparison, asked *before* any results appear.
+
+    Showing a participant which method predicted them better would contaminate
+    the very judgement being collected, so the debrief comes strictly after this.
+    """
+    def handle(request, session):
+        QuestionnaireResponse.objects.create(
+            session=session,
+            kind=QuestionnaireResponse.KIND_FINAL,
+            answers=_answers(
+                request, [q["name"] for q in FINAL_QUESTIONS] + ["comment"]),
+        )
+        session.completed_at = timezone.now()
+        session.save(update_fields=["completed_at"])
+
+    return _step_view(
+        request, study_flow.FINAL, "project4/final.html",
+        context={
+            "title": "One Last Comparison",
+            "questions": FINAL_QUESTIONS,
+            "options": FINAL_OPTIONS,
+        },
+        on_post=handle,
+    )
+
+
+def complete(request):
+    """Step 12 — debrief: what the study was for, and what it learned about you."""
+    session = _require_session(request)
+    if session is None:
+        return redirect("project4:index")
+    if session.current_step != study_flow.COMPLETE:
+        return redirect("project4:study")
+
+    if not session.fits.exists():
+        fit_session_models(session)      # defensive: a session resumed mid-flow
+
+    return render(request, "project4/complete.html", {
+        "title": "Thank You",
+        "progress": study_flow.progress(study_flow.COMPLETE),
+        "session": session,
+        "summary": session_summary(session),
+    })
