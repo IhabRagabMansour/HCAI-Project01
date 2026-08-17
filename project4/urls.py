@@ -7,6 +7,11 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("features/", views.features, name="features"),
 
+    # Downloads
+    path("report/download/", views.report_download, name="report_download"),
+    path("export/sessions.csv", views.export_sessions, name="export_sessions"),
+    path("export/trials.csv", views.export_trials, name="export_trials"),
+
     # Study flow
     path("study/start/", views.start_study, name="start_study"),
     path("study/", views.study, name="study"),

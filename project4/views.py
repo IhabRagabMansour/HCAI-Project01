@@ -1,4 +1,5 @@
 import numpy as np
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
@@ -113,6 +114,35 @@ def features(request):
         "examples": examples,
     }
     return render(request, "project4/features.html", context)
+
+
+# ── Downloads ───────────────────────────────────────────────────────────────
+
+def report_download(request):
+    """Stream the mandatory PDF report."""
+    from .services.report import build_report_pdf
+
+    response = HttpResponse(build_report_pdf(), content_type="application/pdf")
+    response["Content-Disposition"] = 'attachment; filename="project4_report.pdf"'
+    return response
+
+
+def _csv_response(text, filename):
+    response = HttpResponse(text, content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+def export_sessions(request):
+    """Anonymised session-level export: one row per participant."""
+    from .services.export import sessions_csv
+    return _csv_response(sessions_csv(), "project4_sessions.csv")
+
+
+def export_trials(request):
+    """Anonymised trial-level export: one row per task."""
+    from .services.export import trials_csv
+    return _csv_response(trials_csv(), "project4_trials.csv")
 
 
 # ── Study flow ──────────────────────────────────────────────────────────────

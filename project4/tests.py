@@ -1734,3 +1734,250 @@ class FullStudyWalkthroughTest(TestCase):
         plan = self._walk()
         ids = plan.all_movie_ids
         self.assertEqual(len(ids), len(set(ids)))
+
+
+# ── Stage P4-8: PDF report, CSV export and landing-page actions ────────────
+
+class ReportPdfTest(TestCase):
+    """The mandatory PDF deliverable."""
+
+    def test_report_builds_a_well_formed_pdf(self):
+        from .services.report import build_report_pdf
+        pdf = build_report_pdf()
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        self.assertGreater(len(pdf), 20_000)
+
+    def test_report_is_a_multi_page_document(self):
+        from .services.report import build_report_pdf
+        self.assertGreaterEqual(build_report_pdf().count(b"/Type /Page"), 8)
+
+    def test_report_carries_the_project_title(self):
+        from .services.report import build_report_pdf
+        self.assertIn(b"Preference Elicitation", build_report_pdf())
+
+    def test_report_uses_only_glyphs_the_built_in_fonts_have(self):
+        """Guard against silently dropped characters.
+
+        The built-in PDF fonts are WinAnsi-encoded: a Greek letter or a
+        mathematical operator is not rendered as a wrong glyph, it simply
+        vanishes, taking the meaning of a formula with it. Anything outside this
+        allow-list must be rewritten in plain notation rather than typeset.
+        """
+        import re
+        from pathlib import Path
+        from . import services
+
+        safe = {"&amp;", "&lt;", "&gt;", "&quot;", "&nbsp;", "&mdash;", "&ndash;",
+                "&lsquo;", "&rsquo;", "&ldquo;", "&rdquo;", "&hellip;", "&deg;",
+                "&times;", "&sup2;", "&frac12;", "&euro;", "&dagger;", "&bull;"}
+        source = (Path(services.__file__).parent / "report.py").read_text(encoding="utf-8")
+        used = set(re.findall(r"&[a-zA-Z]+;|&#\d+;", source))
+        self.assertEqual(used - safe, set())
+
+    def test_report_download_serves_a_pdf_attachment(self):
+        response = self.client.get("/project4/report/download/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn("project4_report.pdf", response["Content-Disposition"])
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
+
+class LandingPageActionsTest(TestCase):
+    """The two actions the project sheet requires on the landing page."""
+
+    def test_landing_page_offers_the_report_download(self):
+        response = self.client.get("/project4/")
+        self.assertContains(response, "/project4/report/download/")
+        self.assertContains(response, "Download report")
+
+    def test_landing_page_offers_the_study_start(self):
+        response = self.client.get("/project4/")
+        self.assertContains(response, "/project4/study/start/")
+        self.assertContains(response, "Start the study")
+
+    def test_landing_page_offers_the_data_exports(self):
+        response = self.client.get("/project4/")
+        self.assertContains(response, "/project4/export/sessions.csv")
+        self.assertContains(response, "/project4/export/trials.csv")
+
+
+class CsvExportTest(TestCase):
+    """Anonymised session-level and trial-level exports."""
+
+    def _session(self, order="AB", complete=True):
+        from django.utils import timezone
+        from .models import StudySession
+        return StudySession.objects.create(
+            condition_order=order, seed=11, current_step="complete",
+            consented=True,
+            completed_at=timezone.now() if complete else None)
+
+    def _populate(self, session):
+        from .models import (
+            PairwiseTrial, PreferenceModelFit, QuestionnaireResponse, RankingTrial,
+        )
+        for index, (chosen, rejected, rt) in enumerate(
+                [(10, 20, 1200), (30, 40, 1600), (50, 60, None)]):
+            PairwiseTrial.objects.create(
+                session=session, block="main", task_index=index,
+                left_movie_id=chosen, right_movie_id=rejected,
+                chosen_movie_id=chosen, response_time_ms=rt)
+        PairwiseTrial.objects.create(
+            session=session, block="heldout", task_index=0,
+            left_movie_id=70, right_movie_id=80, chosen_movie_id=70)
+        RankingTrial.objects.create(
+            session=session, block="main", task_index=0,
+            movie_ids=[1, 2, 3], ranked_movie_ids=[3, 1, 2], response_time_ms=9000)
+
+        QuestionnaireResponse.objects.create(
+            session=session, kind="background",
+            answers={"age_range": "25-34", "movie_frequency": "weekly",
+                     "recommender_familiarity": "somewhat"})
+        QuestionnaireResponse.objects.create(
+            session=session, kind="condition", condition="pairwise",
+            answers={"ease": "6", "effort": "2", "expressive": "4",
+                     "confidence": "5", "willing": "6", "comment": "fast"})
+        QuestionnaireResponse.objects.create(
+            session=session, kind="condition", condition="ranking",
+            answers={"ease": "3", "effort": "6", "expressive": "6",
+                     "confidence": "6", "willing": "3", "comment": "slow"})
+        QuestionnaireResponse.objects.create(
+            session=session, kind="final",
+            answers={"preferred": "ranking", "expressive": "ranking",
+                     "effort": "pairwise", "comment": "no notes"})
+        PreferenceModelFit.objects.create(
+            session=session, condition="pairwise", weights=[0.0],
+            n_observations=3, heldout_accuracy=0.7, heldout_log_loss=0.61)
+        PreferenceModelFit.objects.create(
+            session=session, condition="ranking", weights=[0.0],
+            n_observations=1, heldout_accuracy=0.8, heldout_log_loss=0.42)
+
+    def _rows(self, text):
+        import csv, io
+        return list(csv.reader(io.StringIO(text)))
+
+    # ── helpers ─────────────────────────────────────────────────────────────
+
+    def test_median_ignores_missing_response_times(self):
+        from .services.export import _median
+        self.assertEqual(_median([1200, None, 1600, 2000]), 1600)
+        self.assertEqual(_median([1000, 2000]), 1500)
+        self.assertEqual(_median([None, None]), "")
+
+    def test_total_ignores_missing_response_times(self):
+        from .services.export import _total
+        self.assertEqual(_total([1200, None, 800]), 2000)
+        self.assertEqual(_total([None]), "")
+
+    # ── sessions.csv ────────────────────────────────────────────────────────
+
+    def test_sessions_export_has_one_row_per_participant(self):
+        from .services.export import SESSION_COLUMNS, sessions_csv
+        self._populate(self._session())
+        self._session(order="BA", complete=False)
+
+        rows = self._rows(sessions_csv())
+        self.assertEqual(rows[0], SESSION_COLUMNS)
+        self.assertEqual(len(rows), 3)          # header + two sessions
+
+    def test_sessions_export_pairs_both_conditions_on_one_row(self):
+        """The primary analysis is paired, so both conditions belong side by side."""
+        from .services.export import SESSION_COLUMNS, sessions_csv
+        session = self._session()
+        self._populate(session)
+
+        rows = self._rows(sessions_csv())
+        record = dict(zip(SESSION_COLUMNS, rows[1]))
+        self.assertEqual(record["participant_code"], session.participant_code)
+        self.assertEqual(record["condition_order"], "AB")
+        self.assertEqual(record["pairwise_heldout_log_loss"], "0.61")
+        self.assertEqual(record["ranking_heldout_log_loss"], "0.42")
+        self.assertEqual(record["pairwise_ease"], "6")
+        self.assertEqual(record["ranking_ease"], "3")
+        self.assertEqual(record["final_preferred"], "ranking")
+        self.assertEqual(record["background_age_range"], "25-34")
+
+    def test_sessions_export_summarises_interaction_times(self):
+        from .services.export import SESSION_COLUMNS, sessions_csv
+        self._populate(self._session())
+        record = dict(zip(SESSION_COLUMNS, self._rows(sessions_csv())[1]))
+        self.assertEqual(record["n_pairwise_trials"], "3")
+        self.assertEqual(record["n_rankings"], "1")
+        self.assertEqual(record["n_heldout"], "1")
+        self.assertEqual(record["pairwise_median_rt_ms"], "1400.0")  # 1200, 1600
+        self.assertEqual(record["pairwise_total_time_ms"], "2800")
+
+    def test_an_incomplete_session_exports_blanks_not_errors(self):
+        from .services.export import SESSION_COLUMNS, sessions_csv
+        self._session(complete=False)
+        record = dict(zip(SESSION_COLUMNS, self._rows(sessions_csv())[1]))
+        self.assertEqual(record["completed"], "False")
+        self.assertEqual(record["pairwise_heldout_accuracy"], "")
+        self.assertEqual(record["ranking_ease"], "")
+
+    def test_export_carries_no_direct_identifier(self):
+        """Data minimisation is a column-level property, so assert it as one."""
+        from .services.export import SESSION_COLUMNS, TRIAL_COLUMNS
+        forbidden = {"name", "email", "mail", "ip", "address", "phone", "user",
+                     "birthday", "dob", "location"}
+        for column in SESSION_COLUMNS + TRIAL_COLUMNS:
+            # Match whole segments, so "participant_code" is not flagged for "ip".
+            segments = set(column.lower().split("_"))
+            self.assertEqual(segments & forbidden, set(), column)
+
+    # ── trials.csv ──────────────────────────────────────────────────────────
+
+    def test_trials_export_has_one_row_per_task(self):
+        from .services.export import TRIAL_COLUMNS, trials_csv
+        self._populate(self._session())
+        rows = self._rows(trials_csv())
+        self.assertEqual(rows[0], TRIAL_COLUMNS)
+        self.assertEqual(len(rows), 6)          # header + 4 pairwise + 1 ranking
+
+    def test_trials_export_records_both_interfaces_readably(self):
+        from .services.export import TRIAL_COLUMNS, trials_csv
+        self._populate(self._session())
+        rows = [dict(zip(TRIAL_COLUMNS, row))
+                for row in self._rows(trials_csv())[1:]]
+
+        pairwise = next(r for r in rows
+                        if r["interface"] == "pairwise" and r["block"] == "main")
+        self.assertEqual(pairwise["movies_shown"], "10;20")
+        self.assertEqual(pairwise["response"], "10")
+
+        # The held-out block is exported too, tagged so it can be filtered out.
+        self.assertTrue(any(r["block"] == "heldout" for r in rows))
+
+        ranking = next(r for r in rows if r["interface"] == "ranking")
+        self.assertEqual(ranking["movies_shown"], "1;2;3")
+        self.assertEqual(ranking["response"], "3;1;2")
+        self.assertEqual(ranking["response_time_ms"], "9000")
+
+    def test_a_missing_response_time_exports_as_blank(self):
+        from .services.export import TRIAL_COLUMNS, trials_csv
+        self._populate(self._session())
+        rows = [dict(zip(TRIAL_COLUMNS, row))
+                for row in self._rows(trials_csv())[1:]]
+        blank = [r for r in rows if r["response_time_ms"] == ""]
+        self.assertEqual(len(blank), 2)          # the None one and the held-out one
+
+    def test_exports_are_empty_but_valid_with_no_sessions(self):
+        from .services.export import SESSION_COLUMNS, TRIAL_COLUMNS
+        from .services.export import sessions_csv, trials_csv
+        self.assertEqual(self._rows(sessions_csv()), [SESSION_COLUMNS])
+        self.assertEqual(self._rows(trials_csv()), [TRIAL_COLUMNS])
+
+    # ── download endpoints ──────────────────────────────────────────────────
+
+    def test_session_export_endpoint_serves_a_csv_attachment(self):
+        response = self.client.get("/project4/export/sessions.csv")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/csv")
+        self.assertIn("project4_sessions.csv", response["Content-Disposition"])
+
+    def test_trial_export_endpoint_serves_a_csv_attachment(self):
+        response = self.client.get("/project4/export/trials.csv")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/csv")
+        self.assertIn("project4_trials.csv", response["Content-Disposition"])

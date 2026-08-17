@@ -218,6 +218,42 @@
     padding: 0 26px;
 }
 
+.p4-actions form {
+    margin: 0;
+}
+
+/* A link styled as a button: downloads are GETs, not form submissions. */
+.p4-button {
+    display: inline-flex;
+    align-items: center;
+    height: 40px;
+    padding: 0 26px;
+    background-color: #275CB2;
+    color: #fff;
+    border-radius: 4px;
+    font-size: 15px;
+    text-decoration: none;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.p4-button:hover {
+    background-color: #1e4a9a;
+    text-decoration: none;
+}
+
+.p4-button--quiet {
+    background-color: #eef2f8;
+    color: #275CB2;
+    border: 1px solid #d7dee9;
+    font-size: 14px;
+    height: 34px;
+}
+
+.p4-button--quiet:hover {
+    background-color: #d9e3f3;
+    color: #1e4a9a;
+}
+
 /* ── Study progress indicator ── */
 .p4-progress {
     max-width: 700px;

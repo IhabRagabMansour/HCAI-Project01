@@ -66,22 +66,42 @@
 
 <div class="p4-section">
     <h2 class="p4-section-title">Take Part</h2>
-    <form method="post" action="{% url 'project4:start_study' %}">
-        {% csrf_token %}
-        <div class="p4-actions">
+    <div class="p4-actions">
+        <form method="post" action="{% url 'project4:start_study' %}">
+            {% csrf_token %}
             <button type="submit">▶ Start the study</button>
-        </div>
-    </form>
+        </form>
+        <a class="p4-button" href="{% url 'project4:report_download' %}">
+            ⬇ Download report (PDF)
+        </a>
+    </div>
     <p class="p4-hint">
-        Starting creates a new pseudonymous participant session. The study takes
-        roughly 15&ndash;20 minutes.
+        Starting creates a new pseudonymous participant session and takes roughly
+        15&ndash;20 minutes. The report covers Tasks 1&ndash;3: the feature
+        representation, the ranking extension of Bradley&ndash;Terry, and the full
+        user-study design.
     </p>
 </div>
 
 <div class="p4-section">
-    <div class="p4-msg p4-msg--info">
-        The <strong>Download report</strong> action is added in a later stage.
+    <h2 class="p4-section-title">Collected Data</h2>
+    <p class="p4-report">
+        Anonymised exports of whatever sessions this instance has recorded. The
+        session file is the paired, analysis-ready format for the primary
+        within-subject comparison; the trial file holds the interaction-level data
+        behind the timing measures.
+    </p>
+    <div class="p4-actions">
+        <a class="p4-button p4-button--quiet"
+           href="{% url 'project4:export_sessions' %}">⬇ sessions.csv</a>
+        <a class="p4-button p4-button--quiet"
+           href="{% url 'project4:export_trials' %}">⬇ trials.csv</a>
     </div>
+    <p class="p4-hint">
+        Identified only by the pseudonymous participant code &mdash; no names,
+        emails, or IP addresses are collected anywhere. In a real deployment these
+        endpoints would sit behind researcher authentication.
+    </p>
 </div>
 
 {% endblock %}
