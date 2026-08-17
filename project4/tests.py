@@ -141,3 +141,142 @@ class HomePageProject4LinkTest(TestCase):
         response = self.client.get("/home/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Project 4")
+
+
+# ── Stage P4-2: feature representation (Task 1) ────────────────────────────
+
+class RatingBucketTest(TestCase):
+    def test_family_ratings(self):
+        from .services.features import rating_bucket
+        for r in ["G", "PG", "TV-G", "Approved", "Passed"]:
+            self.assertEqual(rating_bucket(r), "Family")
+
+    def test_teen_ratings(self):
+        from .services.features import rating_bucket
+        for r in ["PG-13", "TV-14", "GP", "M"]:
+            self.assertEqual(rating_bucket(r), "Teen")
+
+    def test_mature_ratings(self):
+        from .services.features import rating_bucket
+        for r in ["R", "NC-17", "X", "TV-MA"]:
+            self.assertEqual(rating_bucket(r), "Mature")
+
+    def test_unknown_becomes_other(self):
+        from .services.features import rating_bucket
+        for r in ["Not Rated", "Unrated", "Other", "Bogus", None]:
+            self.assertEqual(rating_bucket(r), "Other")
+
+
+class MovieEncoderTest(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from .services.features import get_features
+        cls.X, cls.encoder = get_features()
+
+    def test_matrix_shape_matches_corpus_and_dim(self):
+        corpus = get_movie_corpus()
+        self.assertEqual(self.X.shape, (corpus.n_movies, self.encoder.dim))
+
+    def test_dimension_is_compact(self):
+        # Small d is a design requirement: w is fit from ~15-20 interactions.
+        self.assertLess(self.encoder.dim, 50)
+        self.assertGreater(self.encoder.dim, 20)
+
+    def test_feature_names_match_dim(self):
+        self.assertEqual(len(self.encoder.feature_names), self.encoder.dim)
+        self.assertEqual(len(set(self.encoder.feature_names)), self.encoder.dim)
+
+    def test_all_values_finite(self):
+        import numpy as np
+        self.assertTrue(np.isfinite(self.X).all())
+
+    def test_genre_block_is_binary(self):
+        import numpy as np
+        n_genres = len(self.encoder.genres)
+        self.assertTrue(np.isin(self.X[:, :n_genres], [0.0, 1.0]).all())
+
+    def test_numeric_block_is_standardized(self):
+        import numpy as np
+        from .services.features import NUMERIC_COLUMNS
+        start = len(self.encoder.genres)
+        block = self.X[:, start:start + len(NUMERIC_COLUMNS)]
+        np.testing.assert_allclose(block.mean(axis=0), 0.0, atol=1e-8)
+        np.testing.assert_allclose(block.std(axis=0), 1.0, atol=1e-3)
+
+    def test_rating_one_hot_sums_to_one(self):
+        import numpy as np
+        from .services.features import NUMERIC_COLUMNS, RATING_BUCKETS
+        start = len(self.encoder.genres) + len(NUMERIC_COLUMNS)
+        block = self.X[:, start:start + len(RATING_BUCKETS)]
+        np.testing.assert_array_equal(block.sum(axis=1), np.ones(len(self.X)))
+
+    def test_country_column_is_binary(self):
+        import numpy as np
+        self.assertTrue(np.isin(self.X[:, -1], [0.0, 1.0]).all())
+
+    def test_no_popularity_features(self):
+        # Popularity/acclaim columns must not leak into the taste representation.
+        joined = " ".join(self.encoder.feature_names).lower()
+        for banned in ["imdb_score", "gross", "voted", "facebook", "likes"]:
+            self.assertNotIn(banned, joined)
+
+    def test_encoding_is_reproducible(self):
+        import numpy as np
+        from .services.features import fit_movie_encoder, transform_movies
+        df = get_movie_corpus().df
+        enc = fit_movie_encoder(df)
+        np.testing.assert_allclose(transform_movies(df, enc), self.X)
+
+    def test_known_movie_vector(self):
+        # Avatar: Action|Adventure|Fantasy|Sci-Fi, PG-13 (Teen), USA, 178 min.
+        corpus = get_movie_corpus()
+        record = corpus.display_record(0)
+        self.assertEqual(record["title"], "Avatar")
+        names = self.encoder.feature_names
+        vector = self.X[0]
+        for genre in ["Action", "Adventure", "Fantasy", "Sci-Fi"]:
+            self.assertEqual(vector[names.index(f"genre:{genre}")], 1.0)
+        self.assertEqual(vector[names.index("genre:Comedy")], 0.0)
+        self.assertEqual(vector[names.index("rating:Teen")], 1.0)
+        self.assertEqual(vector[names.index("rating:Mature")], 0.0)
+        self.assertEqual(vector[names.index("country:USA")], 1.0)
+        # 178 min is well above the ~108 min corpus mean
+        self.assertGreater(vector[names.index("num:duration")], 1.0)
+
+    def test_cached_returns_same_object(self):
+        from .services.features import get_features
+        X2, enc2 = get_features()
+        self.assertIs(X2, self.X)
+        self.assertIs(enc2, self.encoder)
+
+
+class FeaturesPageTest(TestCase):
+    def test_returns_200(self):
+        response = self.client.get("/project4/features/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_shows_dimension_and_groups(self):
+        response = self.client.get("/project4/features/")
+        self.assertContains(response, "Feature Groups")
+        self.assertContains(response, "Genres (multi-hot)")
+        self.assertContains(response, "Audience maturity")
+
+    def test_documents_exclusions(self):
+        response = self.client.get("/project4/features/")
+        self.assertContains(response, "Excluded Features")
+        self.assertContains(response, "imdb_score")
+
+    def test_documents_preprocessing(self):
+        response = self.client.get("/project4/features/")
+        self.assertContains(response, "Preprocessing Decisions")
+        self.assertContains(response, "Missing values")
+
+    def test_shows_worked_examples(self):
+        response = self.client.get("/project4/features/")
+        self.assertContains(response, "Worked Examples")
+        self.assertContains(response, "genre:Action")
+
+    def test_nav_links_to_features(self):
+        response = self.client.get("/project4/")
+        self.assertContains(response, "/project4/features/")

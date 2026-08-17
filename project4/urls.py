@@ -5,4 +5,5 @@ app_name = "project4"
 
 urlpatterns = [
     path("", views.index, name="index"),
+    path("features/", views.features, name="features"),
 ]

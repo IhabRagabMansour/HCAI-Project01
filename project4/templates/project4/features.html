@@ -1,0 +1,98 @@
+{% extends 'project4/base.html' %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block project4_content %}
+
+<div class="p4-section">
+    <h2 class="p4-section-title">Movie Feature Representation</h2>
+    <p class="p4-report">
+        Every movie is encoded as a vector <code>x &isin; R<sup>{{ dim }}</sup></code>, and a
+        participant's taste as a latent vector <code>w</code> of the same size, with utility
+        <code>U(x) = w<sup>T</sup>x</code>. Because <code>w</code> must be estimated from only
+        a handful of interactions, the representation is deliberately
+        <strong>small, dense, and human-meaningful</strong> &mdash; every dimension is something
+        a person could plausibly have a taste about.
+    </p>
+    <table class="p4-detail-table">
+        <tr><th>Movies encoded</th><td>{{ n_movies }}</td></tr>
+        <tr><th>Feature dimension <code>d</code></th><td><strong>{{ dim }}</strong></td></tr>
+    </table>
+</div>
+
+<div class="p4-section">
+    <h2 class="p4-section-title">Feature Groups</h2>
+    <div class="p4-table-scroll">
+        <table class="p4-table">
+            <thead>
+                <tr><th>Group</th><th>Dims</th><th>Contents</th><th>Why</th></tr>
+            </thead>
+            <tbody>
+                {% for g in groups %}
+                <tr>
+                    <td class="p4-title-cell">{{ g.name }}</td>
+                    <td>{{ g.dims }}</td>
+                    <td class="p4-detail-cell">{{ g.detail }}</td>
+                    <td class="p4-detail-cell">{{ g.why }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="p4-section">
+    <h2 class="p4-section-title">Excluded Features</h2>
+    <p class="p4-report">
+        <code>imdb_score</code>, <code>gross</code>, <code>num_voted_users</code> and the
+        Facebook-like counts are <strong>deliberately excluded</strong>: they measure a film's
+        fame or critical acclaim rather than the participant's intrinsic taste, and including
+        them would let <code>w</code> absorb a popularity prior that merely looks like a
+        preference. <code>language</code> is also dropped &mdash; 93% of the corpus is English,
+        so the feature is nearly constant and carries almost no signal.
+    </p>
+</div>
+
+<div class="p4-section">
+    <h2 class="p4-section-title">Preprocessing Decisions</h2>
+    <ul class="p4-report-list">
+        <li><strong>Missing values:</strong> movies without genres, duration, or release year
+            are dropped; missing content rating and country become <code>Other</code>.</li>
+        <li><strong>Multi-valued genres:</strong> the pipe-separated field becomes a multi-hot
+            indicator over the corpus genre vocabulary.</li>
+        <li><strong>Rare categories:</strong> the 16 raw content ratings collapse into four
+            audience-maturity buckets, avoiding one-hot dimensions with only a few movies.</li>
+        <li><strong>Numerical scaling:</strong> duration and release year are standardized using
+            corpus statistics stored in the encoder, so the transform is reproducible.</li>
+        <li><strong>Binary features stay 0/1:</strong> genre and country indicators are not
+            standardized, so each coefficient of <code>w</code> reads directly as
+            &ldquo;how much this genre is liked&rdquo;.</li>
+    </ul>
+    <p class="p4-hint">
+        The same encoder and the same matrix <code>X</code> are used by both elicitation
+        conditions, so neither interface is advantaged by its representation.
+    </p>
+</div>
+
+<div class="p4-section">
+    <h2 class="p4-section-title">Worked Examples</h2>
+    {% for m in examples %}
+    <div class="p4-example">
+        <div class="p4-example-title">{{ m.title }} ({{ m.year }})</div>
+        <div class="p4-example-meta">
+            {{ m.genres_display }} &middot; {{ m.duration }} min &middot;
+            {{ m.content_rating }} &middot; {{ m.country }}
+        </div>
+        <div class="p4-vector">
+            {% for f in m.nonzero %}
+            <span class="p4-vector-cell">
+                <code>{{ f.name }}</code> = {{ f.value|floatformat:3 }}
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+    <p class="p4-hint">Only non-zero entries are shown; all other coordinates are 0.</p>
+</div>
+
+{% endblock %}
