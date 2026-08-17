@@ -280,3 +280,289 @@ class FeaturesPageTest(TestCase):
     def test_nav_links_to_features(self):
         response = self.client.get("/project4/")
         self.assertContains(response, "/project4/features/")
+
+
+# ── Stage P4-3: preference models (Task 2) ─────────────────────────────────
+
+class PairwiseModelTest(TestCase):
+    def setUp(self):
+        import numpy as np
+        self.X = np.array([
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+        ])
+        self.w = np.array([2.0, -1.0])
+
+    def test_probabilities_are_complementary(self):
+        from .services.preference_models import pairwise_probability
+        p_ij = pairwise_probability(self.w, self.X[0], self.X[1])
+        p_ji = pairwise_probability(self.w, self.X[1], self.X[0])
+        self.assertAlmostEqual(p_ij + p_ji, 1.0, places=12)
+
+    def test_equal_items_give_half(self):
+        from .services.preference_models import pairwise_probability
+        self.assertAlmostEqual(
+            pairwise_probability(self.w, self.X[0], self.X[0]), 0.5, places=12
+        )
+
+    def test_higher_utility_is_preferred(self):
+        from .services.preference_models import pairwise_probability
+        # w favours feature 0 and dislikes feature 1, so item 0 beats item 1.
+        self.assertGreater(pairwise_probability(self.w, self.X[0], self.X[1]), 0.5)
+
+    def test_probability_in_unit_interval(self):
+        from .services.preference_models import pairwise_probability
+        for i in range(3):
+            for j in range(3):
+                p = pairwise_probability(self.w, self.X[i], self.X[j])
+                self.assertGreater(p, 0.0)
+                self.assertLess(p, 1.0)
+
+    def test_log_likelihood_matches_manual(self):
+        import numpy as np
+        from .services.preference_models import (
+            pairwise_log_likelihood, pairwise_probability,
+        )
+        pairs = [(0, 1), (2, 1)]
+        expected = np.log(pairwise_probability(self.w, self.X[0], self.X[1])) + \
+            np.log(pairwise_probability(self.w, self.X[2], self.X[1]))
+        self.assertAlmostEqual(
+            pairwise_log_likelihood(self.w, pairs, self.X), float(expected), places=10
+        )
+
+    def test_empty_pairs_give_zero(self):
+        from .services.preference_models import pairwise_log_likelihood
+        self.assertEqual(pairwise_log_likelihood(self.w, [], self.X), 0.0)
+
+    def test_log_likelihood_is_negative_and_finite(self):
+        import numpy as np
+        from .services.preference_models import pairwise_log_likelihood
+        ll = pairwise_log_likelihood(self.w, [(0, 1), (1, 2)], self.X)
+        self.assertTrue(np.isfinite(ll))
+        self.assertLess(ll, 0.0)
+
+
+class RankingModelTest(TestCase):
+    def setUp(self):
+        import numpy as np
+        rng = np.random.default_rng(0)
+        self.X = rng.normal(size=(6, 4))
+        self.w = rng.normal(size=4)
+
+    def test_two_item_ranking_equals_bradley_terry(self):
+        """THE key correctness property: Plackett-Luce reduces to Bradley-Terry."""
+        import numpy as np
+        from .services.preference_models import (
+            pairwise_probability, ranking_probability,
+        )
+        for i in range(4):
+            for j in range(4):
+                if i == j:
+                    continue
+                bt = pairwise_probability(self.w, self.X[i], self.X[j])
+                pl = ranking_probability(self.w, [i, j], self.X)
+                self.assertAlmostEqual(pl, bt, places=12)
+
+    def test_two_item_log_likelihoods_agree(self):
+        from .services.preference_models import (
+            pairwise_log_likelihood, ranking_log_likelihood,
+        )
+        pairs = [(0, 1), (2, 3), (4, 5)]
+        rankings = [[c, r] for c, r in pairs]
+        self.assertAlmostEqual(
+            ranking_log_likelihood(self.w, rankings, self.X),
+            pairwise_log_likelihood(self.w, pairs, self.X),
+            places=10,
+        )
+
+    def test_ranking_probability_in_unit_interval(self):
+        from .services.preference_models import ranking_probability
+        p = ranking_probability(self.w, [0, 1, 2, 3, 4, 5], self.X)
+        self.assertGreater(p, 0.0)
+        self.assertLess(p, 1.0)
+
+    def test_all_permutations_sum_to_one(self):
+        """A proper distribution over orderings must sum to 1."""
+        import itertools
+        from .services.preference_models import ranking_probability
+        items = [0, 1, 2, 3]
+        total = sum(
+            ranking_probability(self.w, list(perm), self.X)
+            for perm in itertools.permutations(items)
+        )
+        self.assertAlmostEqual(total, 1.0, places=10)
+
+    def test_best_ordering_is_most_probable(self):
+        import itertools
+        import numpy as np
+        from .services.preference_models import ranking_probability
+        items = [0, 1, 2, 3]
+        scores = self.X[items] @ self.w
+        best = [items[k] for k in np.argsort(-scores)]
+        best_p = ranking_probability(self.w, best, self.X)
+        for perm in itertools.permutations(items):
+            self.assertLessEqual(ranking_probability(self.w, list(perm), self.X), best_p + 1e-12)
+
+    def test_log_likelihood_finite_for_valid_data(self):
+        import numpy as np
+        from .services.preference_models import ranking_log_likelihood
+        ll = ranking_log_likelihood(self.w, [[0, 1, 2], [3, 4, 5]], self.X)
+        self.assertTrue(np.isfinite(ll))
+        self.assertLess(ll, 0.0)
+
+    def test_single_item_ranking_is_ignored(self):
+        from .services.preference_models import ranking_log_likelihood
+        self.assertEqual(ranking_log_likelihood(self.w, [[2]], self.X), 0.0)
+
+
+class GradientCheckTest(TestCase):
+    """Analytic gradients must match numerical differentiation."""
+
+    def _numerical_gradient(self, f, w, eps=1e-6):
+        import numpy as np
+        grad = np.zeros_like(w)
+        for k in range(len(w)):
+            step = np.zeros_like(w)
+            step[k] = eps
+            grad[k] = (f(w + step) - f(w - step)) / (2 * eps)
+        return grad
+
+    def test_pairwise_gradient(self):
+        import numpy as np
+        from .services.preference_models import _pair_difference_matrix, _pairwise_objective
+        rng = np.random.default_rng(1)
+        X = rng.normal(size=(5, 3))
+        pairs = [(0, 1), (2, 3), (4, 0)]
+        D = _pair_difference_matrix(pairs, X)
+        w = rng.normal(size=3)
+        _, analytic = _pairwise_objective(w, D, 0.5)
+        numeric = self._numerical_gradient(lambda v: _pairwise_objective(v, D, 0.5)[0], w)
+        np.testing.assert_allclose(analytic, numeric, atol=1e-6)
+
+    def test_ranking_gradient(self):
+        import numpy as np
+        from .services.preference_models import _ranking_objective
+        rng = np.random.default_rng(2)
+        X = rng.normal(size=(6, 3))
+        feats = [X[[0, 1, 2, 3]], X[[4, 5, 0]]]
+        w = rng.normal(size=3)
+        _, analytic = _ranking_objective(w, feats, 0.5)
+        numeric = self._numerical_gradient(lambda v: _ranking_objective(v, feats, 0.5)[0], w)
+        np.testing.assert_allclose(analytic, numeric, atol=1e-6)
+
+
+class SyntheticRecoveryTest(TestCase):
+    """Fitting simulated preferences should approximately recover the true w."""
+
+    @staticmethod
+    def _cosine(a, b):
+        import numpy as np
+        return float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+    def test_pairwise_recovers_direction(self):
+        import numpy as np
+        from .services.preference_models import fit_pairwise_w
+        rng = np.random.default_rng(7)
+        X = rng.normal(size=(200, 5))
+        w_true = np.array([2.0, -1.5, 0.5, 0.0, 1.0])
+        pairs = []
+        for _ in range(600):
+            i, j = rng.choice(200, size=2, replace=False)
+            # Simulate a Bradley-Terry choice from the true w.
+            p = 1.0 / (1.0 + np.exp(-(X[i] - X[j]) @ w_true))
+            pairs.append((i, j) if rng.random() < p else (j, i))
+        w_hat = fit_pairwise_w(pairs, X, regularization=0.01)
+        self.assertGreater(self._cosine(w_hat, w_true), 0.9)
+
+    def test_ranking_recovers_direction(self):
+        import numpy as np
+        from .services.preference_models import fit_ranking_w
+        rng = np.random.default_rng(8)
+        X = rng.normal(size=(200, 5))
+        w_true = np.array([2.0, -1.5, 0.5, 0.0, 1.0])
+        rankings = []
+        for _ in range(60):
+            items = list(rng.choice(200, size=10, replace=False))
+            # Plackett-Luce sampling: repeatedly draw from a softmax over the rest.
+            remaining, order = list(items), []
+            while remaining:
+                scores = X[remaining] @ w_true
+                probs = np.exp(scores - scores.max())
+                probs /= probs.sum()
+                pick = rng.choice(len(remaining), p=probs)
+                order.append(remaining.pop(pick))
+            rankings.append(order)
+        w_hat = fit_ranking_w(rankings, X, regularization=0.01)
+        self.assertGreater(self._cosine(w_hat, w_true), 0.9)
+
+    def test_both_fitters_agree_on_two_item_data(self):
+        """Same data expressed as pairs or as 2-item rankings -> same estimate."""
+        import numpy as np
+        from .services.preference_models import fit_pairwise_w, fit_ranking_w
+        rng = np.random.default_rng(9)
+        X = rng.normal(size=(40, 4))
+        pairs = [(int(a), int(b)) for a, b in rng.choice(40, size=(50, 2))
+                 if a != b]
+        rankings = [[c, r] for c, r in pairs]
+        w_pair = fit_pairwise_w(pairs, X, regularization=0.5)
+        w_rank = fit_ranking_w(rankings, X, regularization=0.5)
+        np.testing.assert_allclose(w_pair, w_rank, atol=1e-5)
+
+
+class FitEdgeCaseTest(TestCase):
+    def test_no_observations_returns_zero_vector(self):
+        import numpy as np
+        from .services.preference_models import fit_pairwise_w, fit_ranking_w
+        X = np.eye(4)
+        np.testing.assert_array_equal(fit_pairwise_w([], X), np.zeros(4))
+        np.testing.assert_array_equal(fit_ranking_w([], X), np.zeros(4))
+
+    def test_regularization_shrinks_estimate(self):
+        import numpy as np
+        from .services.preference_models import fit_pairwise_w
+        rng = np.random.default_rng(3)
+        X = rng.normal(size=(30, 4))
+        pairs = [(0, 1), (2, 3), (4, 5), (6, 7)]
+        weak = fit_pairwise_w(pairs, X, regularization=0.01)
+        strong = fit_pairwise_w(pairs, X, regularization=100.0)
+        self.assertLess(np.linalg.norm(strong), np.linalg.norm(weak))
+
+    def test_fit_works_with_real_movie_features(self):
+        import numpy as np
+        from .services.features import get_features
+        from .services.preference_models import fit_pairwise_w, fit_ranking_w
+        X, encoder = get_features()
+        w_pair = fit_pairwise_w([(0, 1), (2, 3)], X)
+        w_rank = fit_ranking_w([list(range(10))], X)
+        self.assertEqual(w_pair.shape, (encoder.dim,))
+        self.assertEqual(w_rank.shape, (encoder.dim,))
+        self.assertTrue(np.isfinite(w_pair).all())
+        self.assertTrue(np.isfinite(w_rank).all())
+
+
+class HeldOutEvaluationTest(TestCase):
+    def test_perfect_model_scores_well(self):
+        import numpy as np
+        from .services.preference_models import heldout_accuracy, heldout_log_loss
+        X = np.array([[1.0, 0.0], [0.0, 1.0]])
+        w = np.array([10.0, -10.0])          # strongly prefers item 0
+        pairs = [(0, 1)]
+        self.assertEqual(heldout_accuracy(w, pairs, X), 1.0)
+        self.assertLess(heldout_log_loss(w, pairs, X), 0.01)
+
+    def test_wrong_model_scores_poorly(self):
+        import numpy as np
+        from .services.preference_models import heldout_accuracy, heldout_log_loss
+        X = np.array([[1.0, 0.0], [0.0, 1.0]])
+        w = np.array([-10.0, 10.0])          # prefers the rejected item
+        pairs = [(0, 1)]
+        self.assertEqual(heldout_accuracy(w, pairs, X), 0.0)
+        self.assertGreater(heldout_log_loss(w, pairs, X), 1.0)
+
+    def test_uninformed_model_is_chance(self):
+        import numpy as np
+        from .services.preference_models import heldout_log_loss
+        X = np.array([[1.0, 0.0], [0.0, 1.0]])
+        w = np.zeros(2)
+        self.assertAlmostEqual(heldout_log_loss(w, [(0, 1)], X), np.log(2), places=9)
