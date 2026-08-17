@@ -815,3 +815,182 @@ class StudyFlowViewTest(TestCase):
         orders = list(StudySession.objects.order_by("pk").values_list(
             "condition_order", flat=True))
         self.assertEqual(orders, ["AB", "BA"])
+
+
+# ── Stage P4-5: pairwise condition ─────────────────────────────────────────
+
+class PairwiseConditionTest(TestCase):
+    """Drives a real session up to and through the pairwise condition."""
+
+    def _reach_practice(self):
+        """Start a session and walk to the practice step."""
+        self.client.post("/project4/study/start/")
+        self.client.post("/project4/study/consent/", {"consent": "on"})
+        self.client.post("/project4/study/background/", {
+            "age_range": "25-34", "movie_frequency": "weekly",
+            "recommender_familiarity": "somewhat"})
+        self.client.post("/project4/study/instructions/")
+
+    def _session(self):
+        from .models import StudySession
+        return StudySession.objects.first()
+
+    def _force_pairwise_first(self):
+        """Pin the session to order AB so condition_1 is the pairwise one."""
+        session = self._session()
+        session.condition_order = "AB"
+        session.save(update_fields=["condition_order"])
+        return session
+
+    def _plan(self):
+        from .services.sampling import DEFAULT_CONFIG, build_trial_plan
+        from .services.data import get_movie_corpus
+        return build_trial_plan(
+            self._session().seed, get_movie_corpus().n_movies, DEFAULT_CONFIG)
+
+    # ── practice ────────────────────────────────────────────────────────────
+
+    def test_practice_shows_two_movies(self):
+        self._reach_practice()
+        response = self.client.get("/project4/study/practice/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content.decode().count("p4-movie-card"), 2)
+
+    def test_practice_is_labelled_as_practice(self):
+        self._reach_practice()
+        response = self.client.get("/project4/study/practice/")
+        self.assertContains(response, "does not count")
+
+    def test_practice_choice_is_stored_in_practice_block(self):
+        from .models import BLOCK_PRACTICE, PairwiseTrial
+        self._reach_practice()
+        left, right = self._plan().practice_pairwise[0]
+        self.client.post("/project4/study/practice/", {
+            "chosen_movie_id": str(left), "response_time_ms": "1500"})
+        trial = PairwiseTrial.objects.get(block=BLOCK_PRACTICE)
+        self.assertEqual(trial.chosen_movie_id, left)
+        self.assertEqual(trial.rejected_movie_id, right)
+        self.assertEqual(trial.response_time_ms, 1500)
+
+    def test_practice_advances_to_first_condition(self):
+        self._reach_practice()
+        left, _ = self._plan().practice_pairwise[0]
+        self.client.post("/project4/study/practice/", {"chosen_movie_id": str(left)})
+        # Follow the redirect chain: the router re-enters the practice view,
+        # which sees the block is finished and advances the step.
+        self.client.get("/project4/study/", follow=True)
+        self.assertEqual(self._session().current_step, "condition_1")
+
+    # ── main pairwise condition ─────────────────────────────────────────────
+
+    def _enter_pairwise_condition(self):
+        self._reach_practice()
+        self._force_pairwise_first()
+        left, _ = self._plan().practice_pairwise[0]
+        self.client.post("/project4/study/practice/", {"chosen_movie_id": str(left)})
+        # Follow the redirect chain: the router re-enters the practice view,
+        # which sees the block is finished and advances the step.
+        self.client.get("/project4/study/", follow=True)
+
+    def test_condition_shows_pairwise_trial(self):
+        self._enter_pairwise_condition()
+        response = self.client.get("/project4/study/condition/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Which would you rather watch?")
+        self.assertContains(response, "Task 1 of")
+
+    def test_trial_uses_the_planned_pair(self):
+        self._enter_pairwise_condition()
+        left, right = self._plan().pairwise[0]
+        from .services.data import get_movie_corpus
+        corpus = get_movie_corpus()
+        response = self.client.get("/project4/study/condition/")
+        self.assertContains(response, f'value="{left}"')
+        self.assertContains(response, f'value="{right}"')
+
+    def test_choice_is_recorded_and_trial_advances(self):
+        from .models import BLOCK_MAIN, PairwiseTrial
+        self._enter_pairwise_condition()
+        left, _ = self._plan().pairwise[0]
+        self.client.post("/project4/study/condition/", {"chosen_movie_id": str(left)})
+        self.assertEqual(PairwiseTrial.objects.filter(block=BLOCK_MAIN).count(), 1)
+        response = self.client.get("/project4/study/condition/")
+        self.assertContains(response, "Task 2 of")
+
+    def test_invalid_choice_is_rejected(self):
+        """A movie that is not in the displayed pair must not be recorded."""
+        from .models import BLOCK_MAIN, PairwiseTrial
+        self._enter_pairwise_condition()
+        self.client.post("/project4/study/condition/", {"chosen_movie_id": "999999"})
+        self.assertEqual(PairwiseTrial.objects.filter(block=BLOCK_MAIN).count(), 0)
+
+    def test_missing_choice_is_rejected(self):
+        from .models import BLOCK_MAIN, PairwiseTrial
+        self._enter_pairwise_condition()
+        self.client.post("/project4/study/condition/", {})
+        self.assertEqual(PairwiseTrial.objects.filter(block=BLOCK_MAIN).count(), 0)
+
+    def test_malformed_response_time_is_ignored_but_choice_kept(self):
+        from .models import BLOCK_MAIN, PairwiseTrial
+        self._enter_pairwise_condition()
+        left, _ = self._plan().pairwise[0]
+        self.client.post("/project4/study/condition/", {
+            "chosen_movie_id": str(left), "response_time_ms": "not-a-number"})
+        trial = PairwiseTrial.objects.get(block=BLOCK_MAIN)
+        self.assertEqual(trial.chosen_movie_id, left)
+        self.assertIsNone(trial.response_time_ms)
+
+    def test_completing_all_trials_advances_the_step(self):
+        from .models import BLOCK_MAIN, PairwiseTrial
+        from .services.sampling import DEFAULT_CONFIG
+        self._enter_pairwise_condition()
+        plan = self._plan()
+        for left, _ in plan.pairwise:
+            self.client.post("/project4/study/condition/", {"chosen_movie_id": str(left)})
+        self.assertEqual(
+            PairwiseTrial.objects.filter(block=BLOCK_MAIN).count(),
+            DEFAULT_CONFIG.n_pairwise_trials,
+        )
+        self.client.get("/project4/study/condition/", follow=True)
+        self.assertEqual(self._session().current_step, "questionnaire_1")
+
+    def test_reload_does_not_duplicate_or_skip(self):
+        """Refreshing the trial page must show the same trial again."""
+        self._enter_pairwise_condition()
+        first = self.client.get("/project4/study/condition/").content.decode()
+        second = self.client.get("/project4/study/condition/").content.decode()
+        self.assertIn("Task 1 of", first)
+        self.assertIn("Task 1 of", second)
+
+    def test_pairwise_trials_use_disjoint_movies_from_practice(self):
+        plan_pairs = None
+        self._enter_pairwise_condition()
+        plan = self._plan()
+        practice_ids = {m for pair in plan.practice_pairwise for m in pair}
+        main_ids = {m for pair in plan.pairwise for m in pair}
+        self.assertEqual(practice_ids & main_ids, set())
+
+    def test_condition_step_guard(self):
+        """Hitting the condition URL outside a condition step redirects away."""
+        self._reach_practice()      # still on the practice step
+        response = self.client.get("/project4/study/condition/")
+        self.assertRedirects(response, "/project4/study/", target_status_code=302)
+
+    def test_ranking_first_session_sees_pending_placeholder(self):
+        """Order BA reaches the ranking condition, which lands in the next stage."""
+        self._reach_practice()
+        session = self._session()
+        session.condition_order = "BA"
+        session.save(update_fields=["condition_order"])
+        left, _ = self._plan().practice_pairwise[0]
+        self.client.post("/project4/study/practice/", {"chosen_movie_id": str(left)})
+        # Follow the redirect chain: the router re-enters the practice view,
+        # which sees the block is finished and advances the step.
+        self.client.get("/project4/study/", follow=True)
+        response = self.client.get("/project4/study/condition/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_timer_script_loaded(self):
+        self._enter_pairwise_condition()
+        response = self.client.get("/project4/study/condition/")
+        self.assertContains(response, "trial_timer.js")

@@ -1,7 +1,10 @@
 import numpy as np
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .models import QuestionnaireResponse, StudySession
+from .models import (
+    BLOCK_HELDOUT, BLOCK_MAIN, BLOCK_PRACTICE,
+    PairwiseTrial, QuestionnaireResponse, StudySession,
+)
 from .services import study as study_flow
 from .services.data import get_movie_corpus, genre_vocabulary
 from .services.features import describe_feature_groups, get_features
@@ -15,7 +18,24 @@ STEP_URL_NAMES = {
     study_flow.CONSENT: "project4:consent",
     study_flow.BACKGROUND: "project4:background",
     study_flow.INSTRUCTIONS: "project4:instructions",
+    study_flow.PRACTICE: "project4:practice",
+    study_flow.CONDITION_1: "project4:condition",
+    study_flow.CONDITION_2: "project4:condition",
 }
+
+
+def _plan_for(session):
+    """Regenerate the session's deterministic trial plan."""
+    return build_trial_plan(session.seed, get_movie_corpus().n_movies, DEFAULT_CONFIG)
+
+
+def _parse_response_time(request):
+    """Client-reported response time in ms, ignored if malformed."""
+    try:
+        value = int(request.POST.get("response_time_ms", ""))
+    except (TypeError, ValueError):
+        return None
+    return value if 0 <= value < 1000 * 60 * 60 else None
 
 
 def _current_session(request):
@@ -192,3 +212,105 @@ def instructions(request):
             "first_condition": first_condition,
         },
     )
+
+
+# ── Pairwise trial engine ───────────────────────────────────────────────────
+#
+# One engine serves every pairwise block: practice, the main pairwise condition,
+# and the shared held-out evaluation. The trial index is simply how many trials
+# of that block are already stored, so a refresh can never double-count and a
+# reload resumes exactly where the participant left off.
+
+def _pairwise_done_count(session, block) -> int:
+    return PairwiseTrial.objects.filter(session=session, block=block).count()
+
+
+def _record_pairwise(request, session, block, index, pair) -> bool:
+    """Validate and store one pairwise choice. Returns True if it was recorded."""
+    left_id, right_id = pair
+    try:
+        chosen = int(request.POST.get("chosen_movie_id", ""))
+    except (TypeError, ValueError):
+        return False
+    if chosen not in (left_id, right_id):
+        return False
+
+    PairwiseTrial.objects.update_or_create(
+        session=session, block=block, task_index=index,
+        defaults={
+            "left_movie_id": left_id,
+            "right_movie_id": right_id,
+            "chosen_movie_id": chosen,
+            "response_time_ms": _parse_response_time(request),
+        },
+    )
+    return True
+
+
+def _run_pairwise_block(request, session, step, block, pairs, *, title, is_practice=False):
+    """Render/handle one trial of a pairwise block; advance the step when done."""
+    corpus = get_movie_corpus()
+
+    if request.method == "POST":
+        index = _pairwise_done_count(session, block)
+        if index < len(pairs):
+            _record_pairwise(request, session, block, index, pairs[index])
+        return redirect("project4:study")
+
+    index = _pairwise_done_count(session, block)
+    if index >= len(pairs):
+        _advance(session, step)
+        return redirect("project4:study")
+
+    left_id, right_id = pairs[index]
+    return render(request, "project4/pairwise.html", {
+        "title": title,
+        "progress": study_flow.progress(step),
+        "session": session,
+        "movies": [corpus.display_record(left_id), corpus.display_record(right_id)],
+        "trial_number": index + 1,
+        "trial_total": len(pairs),
+        "is_practice": is_practice,
+    })
+
+
+def practice(request):
+    """Step 4 — unscored practice so the interface is familiar before measurement."""
+    session = _require_session(request)
+    if session is None:
+        return redirect("project4:index")
+    if session.current_step != study_flow.PRACTICE:
+        return redirect("project4:study")
+
+    plan = _plan_for(session)
+    return _run_pairwise_block(
+        request, session, study_flow.PRACTICE, BLOCK_PRACTICE,
+        plan.practice_pairwise,
+        title="Practice", is_practice=True,
+    )
+
+
+def condition(request):
+    """Steps 5 & 8 — whichever elicitation condition this session runs now."""
+    session = _require_session(request)
+    if session is None:
+        return redirect("project4:index")
+    step = session.current_step
+    if not study_flow.is_condition_step(step):
+        return redirect("project4:study")
+
+    which = study_flow.condition_for_step(step, session.condition_order)
+    plan = _plan_for(session)
+
+    if which == study_flow.PAIRWISE:
+        return _run_pairwise_block(
+            request, session, step, BLOCK_MAIN, plan.pairwise,
+            title="Which would you rather watch?",
+        )
+
+    # The ranking condition arrives in the next stage.
+    return render(request, "project4/pending.html", {
+        "title": "Ranking",
+        "progress": study_flow.progress(step),
+        "session": session,
+    })

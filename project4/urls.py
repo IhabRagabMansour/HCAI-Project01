@@ -13,4 +13,6 @@ urlpatterns = [
     path("study/consent/", views.consent, name="consent"),
     path("study/background/", views.background, name="background"),
     path("study/instructions/", views.instructions, name="instructions"),
+    path("study/practice/", views.practice, name="practice"),
+    path("study/condition/", views.condition, name="condition"),
 ]

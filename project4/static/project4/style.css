@@ -337,3 +337,86 @@
     color: #333;
     margin: 0;
 }
+
+/* ── Pairwise trial ── */
+.p4-trial-form {
+    margin: 0 auto;
+}
+
+.p4-pair {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+
+/* Each movie card is itself the submit button, so a choice is only ever made
+   by an explicit click — nothing is preselected. */
+.p4-movie-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-width: 260px;
+    max-width: 380px;
+    height: auto;
+    padding: 20px;
+    text-align: left;
+    background: #fff;
+    color: #333;
+    border: 2px solid #d7dee9;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.p4-movie-card:hover {
+    border-color: #275CB2;
+    box-shadow: 0 4px 14px rgba(39, 92, 178, 0.18);
+    transform: translateY(-2px);
+}
+
+.p4-movie-card:focus-visible {
+    outline: 3px solid #275CB2;
+    outline-offset: 2px;
+}
+
+.p4-movie-title {
+    font-size: 19px;
+    font-weight: 700;
+    color: #275CB2;
+    line-height: 1.3;
+}
+
+.p4-movie-year {
+    font-size: 14px;
+    color: #666;
+}
+
+.p4-movie-genres {
+    font-size: 14px;
+    color: #333;
+    margin-top: 4px;
+}
+
+.p4-movie-meta,
+.p4-movie-people {
+    font-size: 12.5px;
+    color: #888;
+}
+
+.p4-movie-pick {
+    margin-top: 10px;
+    align-self: flex-start;
+    background: #275CB2;
+    color: #fff;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-size: 13.5px;
+}
+
+.p4-movie-card:hover .p4-movie-pick {
+    background: #1e4a9a;
+}

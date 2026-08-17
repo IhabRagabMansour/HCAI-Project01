@@ -1,0 +1,48 @@
+{% extends 'project4/study_base.html' %}
+{% load static %}
+
+{% block study_content %}
+
+<div class="p4-section">
+    {% if is_practice %}
+    <div class="p4-msg p4-msg--info">
+        <strong>Practice.</strong> This one does not count &mdash; it is just to show you
+        how the interface works.
+    </div>
+    {% endif %}
+
+    <h2 class="p4-section-title">Which would you rather watch?</h2>
+    <p class="p4-hint">
+        Task {{ trial_number }} of {{ trial_total }} &middot;
+        pick the film <em>you</em> would rather watch &mdash; there is no right answer.
+    </p>
+</div>
+
+<form method="post" class="p4-trial-form" id="pairwise-form">
+    {% csrf_token %}
+    <input type="hidden" name="response_time_ms" id="response_time_ms" value="">
+
+    <div class="p4-pair">
+        {% for movie in movies %}
+        <button type="submit" name="chosen_movie_id" value="{{ movie.movie_id }}"
+                class="p4-movie-card">
+            <span class="p4-movie-title">{{ movie.title }}</span>
+            <span class="p4-movie-year">{{ movie.year }}</span>
+            <span class="p4-movie-genres">{{ movie.genres_display }}</span>
+            <span class="p4-movie-meta">
+                {{ movie.duration }} min &middot; {{ movie.content_rating }} &middot; {{ movie.country }}
+            </span>
+            <span class="p4-movie-people">
+                Dir. {{ movie.director }} &middot; {{ movie.actor }}
+            </span>
+            <span class="p4-movie-pick">Choose this one</span>
+        </button>
+        {% endfor %}
+    </div>
+</form>
+
+<p class="p4-hint">Your choice is recorded when you click a film.</p>
+
+<script src="{% static 'project4/trial_timer.js' %}"></script>
+
+{% endblock %}
