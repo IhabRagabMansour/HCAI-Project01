@@ -1,0 +1,77 @@
+{% extends 'project4/study_base.html' %}
+{% load static %}
+
+{% block study_content %}
+
+<div class="p4-section">
+    {% if is_practice %}
+    <div class="p4-msg p4-msg--info">
+        <strong>Practice.</strong> This one does not count &mdash; it is just to show you
+        how the interface works.
+    </div>
+    {% endif %}
+
+    <h2 class="p4-section-title">Put these films in order</h2>
+    <p class="p4-hint">
+        Ranking {{ trial_number }} of {{ trial_total }} &middot;
+        most preferred at the top, least preferred at the bottom &mdash;
+        there is no right answer.
+    </p>
+</div>
+
+<form method="post" class="p4-trial-form" id="ranking-form">
+    {% csrf_token %}
+    <input type="hidden" name="response_time_ms" id="response_time_ms" value="">
+    {# The whole order travels in this field; the server accepts it only if it
+       is exactly a permutation of the films it sent. #}
+    <input type="hidden" name="ranked_movie_ids" id="ranked_movie_ids" value="{{ order_csv }}">
+
+    <p class="p4-rank-end p4-rank-end--top">&uarr; Most preferred</p>
+
+    <ol class="p4-rank-list" id="p4-rank-list">
+        {% for movie in movies %}
+        <li class="p4-rank-item" data-movie-id="{{ movie.movie_id }}" draggable="true">
+            <span class="p4-rank-grip" aria-hidden="true">&#9776;</span>
+            <span class="p4-rank-number">{{ forloop.counter }}</span>
+
+            <span class="p4-rank-body">
+                <span class="p4-movie-title">{{ movie.title }}</span>
+                <span class="p4-movie-genres">{{ movie.year }} &middot; {{ movie.genres_display }}</span>
+                <span class="p4-movie-meta">
+                    {{ movie.duration }} min &middot; {{ movie.content_rating }} &middot; {{ movie.country }}
+                    &middot; Dir. {{ movie.director }} &middot; {{ movie.actor }}
+                </span>
+            </span>
+
+            {# Real buttons, so the list is fully operable by keyboard. Without
+               JavaScript they submit and the server performs the same swap. #}
+            <span class="p4-rank-controls">
+                <button type="submit" name="move" value="up:{{ movie.movie_id }}"
+                        class="p4-rank-move" data-direction="up"
+                        aria-label="Move {{ movie.title }} up">&#9650;</button>
+                <button type="submit" name="move" value="down:{{ movie.movie_id }}"
+                        class="p4-rank-move" data-direction="down"
+                        aria-label="Move {{ movie.title }} down">&#9660;</button>
+            </span>
+        </li>
+        {% endfor %}
+    </ol>
+
+    <p class="p4-rank-end p4-rank-end--bottom">&darr; Least preferred</p>
+
+    <p class="p4-rank-status" id="p4-rank-status" role="status" aria-live="polite"></p>
+
+    <div class="p4-actions">
+        <button type="submit" name="submit_ranking" value="1">Submit this ranking</button>
+    </div>
+</form>
+
+<p class="p4-hint">
+    Drag a film to move it, or use the &#9650;&#9660; buttons. Nothing is recorded
+    until you press <em>Submit this ranking</em>.
+</p>
+
+<script src="{% static 'project4/trial_timer.js' %}"></script>
+<script src="{% static 'project4/ranking.js' %}"></script>
+
+{% endblock %}

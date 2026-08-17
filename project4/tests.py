@@ -848,6 +848,21 @@ class PairwiseConditionTest(TestCase):
         return build_trial_plan(
             self._session().seed, get_movie_corpus().n_movies, DEFAULT_CONFIG)
 
+    def _complete_practice(self):
+        """Finish both practice blocks, in whichever order this session uses."""
+        from .services.study import conditions_for_order
+        plan = self._plan()
+        posts = {
+            "pairwise": {"chosen_movie_id": str(plan.practice_pairwise[0][0])},
+            "ranking": {"ranked_movie_ids":
+                        ",".join(str(m) for m in plan.practice_ranking[0])},
+        }
+        for which in conditions_for_order(self._session().condition_order):
+            self.client.post("/project4/study/practice/", posts[which])
+        # Follow the redirect chain: the router re-enters the practice view,
+        # which sees both blocks are finished and advances the step.
+        self.client.get("/project4/study/", follow=True)
+
     # ── practice ────────────────────────────────────────────────────────────
 
     def test_practice_shows_two_movies(self):
@@ -874,23 +889,24 @@ class PairwiseConditionTest(TestCase):
 
     def test_practice_advances_to_first_condition(self):
         self._reach_practice()
+        self._complete_practice()
+        self.assertEqual(self._session().current_step, "condition_1")
+
+    def test_practice_does_not_advance_until_both_interfaces_are_practised(self):
+        """One practice block done is not enough — the other still has to run."""
+        self._reach_practice()
+        self._force_pairwise_first()
         left, _ = self._plan().practice_pairwise[0]
         self.client.post("/project4/study/practice/", {"chosen_movie_id": str(left)})
-        # Follow the redirect chain: the router re-enters the practice view,
-        # which sees the block is finished and advances the step.
         self.client.get("/project4/study/", follow=True)
-        self.assertEqual(self._session().current_step, "condition_1")
+        self.assertEqual(self._session().current_step, "practice")
 
     # ── main pairwise condition ─────────────────────────────────────────────
 
     def _enter_pairwise_condition(self):
         self._reach_practice()
         self._force_pairwise_first()
-        left, _ = self._plan().practice_pairwise[0]
-        self.client.post("/project4/study/practice/", {"chosen_movie_id": str(left)})
-        # Follow the redirect chain: the router re-enters the practice view,
-        # which sees the block is finished and advances the step.
-        self.client.get("/project4/study/", follow=True)
+        self._complete_practice()
 
     def test_condition_shows_pairwise_trial(self):
         self._enter_pairwise_condition()
@@ -976,21 +992,236 @@ class PairwiseConditionTest(TestCase):
         response = self.client.get("/project4/study/condition/")
         self.assertRedirects(response, "/project4/study/", target_status_code=302)
 
-    def test_ranking_first_session_sees_pending_placeholder(self):
-        """Order BA reaches the ranking condition, which lands in the next stage."""
-        self._reach_practice()
-        session = self._session()
-        session.condition_order = "BA"
-        session.save(update_fields=["condition_order"])
-        left, _ = self._plan().practice_pairwise[0]
-        self.client.post("/project4/study/practice/", {"chosen_movie_id": str(left)})
-        # Follow the redirect chain: the router re-enters the practice view,
-        # which sees the block is finished and advances the step.
-        self.client.get("/project4/study/", follow=True)
-        response = self.client.get("/project4/study/condition/")
-        self.assertEqual(response.status_code, 200)
-
     def test_timer_script_loaded(self):
         self._enter_pairwise_condition()
         response = self.client.get("/project4/study/condition/")
         self.assertContains(response, "trial_timer.js")
+
+
+# ── Stage P4-6: ranking condition ──────────────────────────────────────────
+
+class RankingOrderHelperTest(TestCase):
+    """The two pure helpers behind the ranking engine, tested in isolation."""
+
+    def setUp(self):
+        from django.test import RequestFactory
+        self.factory = RequestFactory()
+
+    def _parse(self, posted, shown):
+        from .views import _parse_submitted_order
+        request = self.factory.post("/", {"ranked_movie_ids": posted})
+        return _parse_submitted_order(request, shown)
+
+    def test_accepts_a_permutation_of_the_shown_movies(self):
+        self.assertEqual(self._parse("3,1,2", [1, 2, 3]), [3, 1, 2])
+
+    def test_accepts_the_unchanged_order(self):
+        self.assertEqual(self._parse("1,2,3", [1, 2, 3]), [1, 2, 3])
+
+    def test_rejects_a_duplicate(self):
+        self.assertIsNone(self._parse("1,1,2", [1, 2, 3]))
+
+    def test_rejects_a_missing_movie(self):
+        self.assertIsNone(self._parse("1,2", [1, 2, 3]))
+
+    def test_rejects_an_extra_movie(self):
+        self.assertIsNone(self._parse("1,2,3,4", [1, 2, 3]))
+
+    def test_rejects_a_movie_that_was_never_shown(self):
+        self.assertIsNone(self._parse("1,2,99", [1, 2, 3]))
+
+    def test_rejects_non_numeric_input(self):
+        self.assertIsNone(self._parse("1,two,3", [1, 2, 3]))
+
+    def test_rejects_empty_input(self):
+        self.assertIsNone(self._parse("", [1, 2, 3]))
+
+    # ── the no-JavaScript move fallback ─────────────────────────────────────
+
+    def test_move_up_swaps_with_the_row_above(self):
+        from .views import _apply_move
+        self.assertEqual(_apply_move([1, 2, 3], "up:2"), [2, 1, 3])
+
+    def test_move_down_swaps_with_the_row_below(self):
+        from .views import _apply_move
+        self.assertEqual(_apply_move([1, 2, 3], "down:2"), [1, 3, 2])
+
+    def test_move_off_either_end_is_ignored(self):
+        from .views import _apply_move
+        self.assertEqual(_apply_move([1, 2, 3], "up:1"), [1, 2, 3])
+        self.assertEqual(_apply_move([1, 2, 3], "down:3"), [1, 2, 3])
+
+    def test_malformed_move_is_ignored(self):
+        from .views import _apply_move
+        for move in ["up:x", "sideways:2", "up:99", "garbage", ""]:
+            self.assertEqual(_apply_move([1, 2, 3], move), [1, 2, 3], move)
+
+    def test_move_never_drops_or_duplicates_a_movie(self):
+        from .views import _apply_move
+        order = [5, 6, 7, 8]
+        for move in ["up:7", "down:5", "up:8", "down:6"]:
+            order = _apply_move(order, move)
+            self.assertEqual(sorted(order), [5, 6, 7, 8])
+
+
+class RankingConditionTest(TestCase):
+    """Drives a real session through the ranking practice and condition."""
+
+    def _reach_practice(self, order="BA"):
+        self.client.post("/project4/study/start/")
+        self.client.post("/project4/study/consent/", {"consent": "on"})
+        self.client.post("/project4/study/background/", {
+            "age_range": "25-34", "movie_frequency": "weekly",
+            "recommender_familiarity": "somewhat"})
+        self.client.post("/project4/study/instructions/")
+        session = self._session()
+        session.condition_order = order       # BA runs ranking first
+        session.save(update_fields=["condition_order"])
+
+    def _session(self):
+        from .models import StudySession
+        return StudySession.objects.first()
+
+    def _plan(self):
+        from .services.sampling import DEFAULT_CONFIG, build_trial_plan
+        from .services.data import get_movie_corpus
+        return build_trial_plan(
+            self._session().seed, get_movie_corpus().n_movies, DEFAULT_CONFIG)
+
+    def _enter_ranking_condition(self):
+        """Order BA: practice ranking, then practice pairwise, then condition 1."""
+        self._reach_practice(order="BA")
+        plan = self._plan()
+        self.client.post("/project4/study/practice/", {
+            "ranked_movie_ids": ",".join(str(m) for m in plan.practice_ranking[0])})
+        self.client.post("/project4/study/practice/", {
+            "chosen_movie_id": str(plan.practice_pairwise[0][0])})
+        self.client.get("/project4/study/", follow=True)
+
+    # ── practice ────────────────────────────────────────────────────────────
+
+    def test_ranking_practice_shows_ten_movies(self):
+        self._reach_practice(order="BA")
+        response = self.client.get("/project4/study/practice/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content.decode().count("p4-rank-item"), 10)
+
+    def test_ranking_practice_is_labelled_as_practice(self):
+        self._reach_practice(order="BA")
+        response = self.client.get("/project4/study/practice/")
+        self.assertContains(response, "does not count")
+
+    def test_ranking_practice_is_stored_in_the_practice_block(self):
+        from .models import BLOCK_PRACTICE, RankingTrial
+        self._reach_practice(order="BA")
+        group = self._plan().practice_ranking[0]
+        self.client.post("/project4/study/practice/", {
+            "ranked_movie_ids": ",".join(str(m) for m in reversed(group)),
+            "response_time_ms": "9000"})
+        trial = RankingTrial.objects.get(block=BLOCK_PRACTICE)
+        self.assertEqual(trial.movie_ids, list(group))
+        self.assertEqual(trial.ranked_movie_ids, list(reversed(group)))
+        self.assertEqual(trial.response_time_ms, 9000)
+
+    # ── main ranking condition ──────────────────────────────────────────────
+
+    def test_condition_shows_a_ranking_trial(self):
+        self._enter_ranking_condition()
+        response = self.client.get("/project4/study/condition/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Put these films in order")
+        self.assertContains(response, "Ranking 1 of 3")
+
+    def test_condition_shows_the_planned_group(self):
+        self._enter_ranking_condition()
+        response = self.client.get("/project4/study/condition/")
+        body = response.content.decode()
+        for movie_id in self._plan().ranking[0]:
+            self.assertIn(f'data-movie-id="{movie_id}"', body)
+
+    def test_submitted_ranking_is_recorded_and_the_trial_advances(self):
+        from .models import BLOCK_MAIN, RankingTrial
+        self._enter_ranking_condition()
+        group = self._plan().ranking[0]
+        submitted = list(reversed(group))
+        self.client.post("/project4/study/condition/", {
+            "ranked_movie_ids": ",".join(str(m) for m in submitted),
+            "response_time_ms": "12000"})
+
+        trial = RankingTrial.objects.get(block=BLOCK_MAIN, task_index=0)
+        self.assertEqual(trial.ranked_movie_ids, submitted)
+        self.assertEqual(trial.response_time_ms, 12000)
+        response = self.client.get("/project4/study/condition/")
+        self.assertContains(response, "Ranking 2 of 3")
+
+    def test_a_tampered_order_is_not_stored(self):
+        from .models import RankingTrial
+        self._enter_ranking_condition()
+        group = self._plan().ranking[0]
+        self.client.post("/project4/study/condition/", {
+            "ranked_movie_ids": ",".join(str(m) for m in group[:5])})
+        self.assertEqual(RankingTrial.objects.filter(block="main").count(), 0)
+        # ...and the participant is shown the very same task again.
+        response = self.client.get("/project4/study/condition/")
+        self.assertContains(response, "Ranking 1 of 3")
+
+    def test_a_foreign_movie_id_is_not_stored(self):
+        from .models import RankingTrial
+        self._enter_ranking_condition()
+        group = list(self._plan().ranking[0])
+        group[0] = 99999                     # not one of the films shown
+        self.client.post("/project4/study/condition/", {
+            "ranked_movie_ids": ",".join(str(m) for m in group)})
+        self.assertEqual(RankingTrial.objects.filter(block="main").count(), 0)
+
+    def test_move_button_reorders_without_recording_a_trial(self):
+        """The no-JavaScript fallback: one press swaps two rows, stores nothing."""
+        from .models import RankingTrial
+        self._enter_ranking_condition()
+        group = self._plan().ranking[0]
+        response = self.client.post("/project4/study/condition/", {
+            "ranked_movie_ids": ",".join(str(m) for m in group),
+            "move": f"up:{group[1]}"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(RankingTrial.objects.filter(block="main").count(), 0)
+        expected = [group[1], group[0]] + list(group[2:])
+        self.assertContains(
+            response, ",".join(str(m) for m in expected))
+
+    def test_reload_shows_the_same_ranking_trial(self):
+        self._enter_ranking_condition()
+        first = self.client.get("/project4/study/condition/").content.decode()
+        second = self.client.get("/project4/study/condition/").content.decode()
+        self.assertIn("Ranking 1 of 3", first)
+        self.assertIn("Ranking 1 of 3", second)
+
+    def test_completing_all_rankings_advances_the_step(self):
+        self._enter_ranking_condition()
+        plan = self._plan()
+        for group in plan.ranking:
+            self.client.post("/project4/study/condition/", {
+                "ranked_movie_ids": ",".join(str(m) for m in group)})
+        self.client.get("/project4/study/", follow=True)
+        self.assertEqual(self._session().current_step, "questionnaire_1")
+
+    def test_ranking_and_pairwise_movies_are_disjoint(self):
+        """No film appears in both conditions, so neither can prime the other."""
+        self._enter_ranking_condition()
+        plan = self._plan()
+        ranking_ids = {m for group in plan.ranking for m in group}
+        pairwise_ids = {m for pair in plan.pairwise for m in pair}
+        self.assertEqual(ranking_ids & pairwise_ids, set())
+
+    def test_ranking_scripts_loaded(self):
+        self._enter_ranking_condition()
+        response = self.client.get("/project4/study/condition/")
+        self.assertContains(response, "ranking.js")
+        self.assertContains(response, "trial_timer.js")
+
+    def test_move_buttons_are_labelled_for_screen_readers(self):
+        self._enter_ranking_condition()
+        response = self.client.get("/project4/study/condition/")
+        body = response.content.decode()
+        self.assertEqual(body.count('aria-label="Move '), 20)   # up+down per film
+        self.assertIn('aria-live="polite"', body)

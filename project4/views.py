@@ -3,7 +3,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from .models import (
     BLOCK_HELDOUT, BLOCK_MAIN, BLOCK_PRACTICE,
-    PairwiseTrial, QuestionnaireResponse, StudySession,
+    PairwiseTrial, QuestionnaireResponse, RankingTrial, StudySession,
 )
 from .services import study as study_flow
 from .services.data import get_movie_corpus, genre_vocabulary
@@ -214,12 +214,16 @@ def instructions(request):
     )
 
 
-# ── Pairwise trial engine ───────────────────────────────────────────────────
+# ── Trial engines ───────────────────────────────────────────────────────────
 #
-# One engine serves every pairwise block: practice, the main pairwise condition,
-# and the shared held-out evaluation. The trial index is simply how many trials
-# of that block are already stored, so a refresh can never double-count and a
-# reload resumes exactly where the participant left off.
+# One engine per elicitation interface, each serving every block that uses it:
+# practice, the main condition, and (for pairwise) the shared held-out check.
+# The trial index is simply how many trials of that block are already stored, so
+# a refresh can never double-count and a reload resumes exactly where the
+# participant left off.
+#
+# A runner returns None once its block is finished. The caller decides what
+# happens next, which is what lets the practice step chain two blocks together.
 
 def _pairwise_done_count(session, block) -> int:
     return PairwiseTrial.objects.filter(session=session, block=block).count()
@@ -247,21 +251,18 @@ def _record_pairwise(request, session, block, index, pair) -> bool:
     return True
 
 
-def _run_pairwise_block(request, session, step, block, pairs, *, title, is_practice=False):
-    """Render/handle one trial of a pairwise block; advance the step when done."""
-    corpus = get_movie_corpus()
-
-    if request.method == "POST":
-        index = _pairwise_done_count(session, block)
-        if index < len(pairs):
-            _record_pairwise(request, session, block, index, pairs[index])
-        return redirect("project4:study")
-
+def _run_pairwise_block(request, session, block, pairs, *, step, title, is_practice=False):
+    """One trial of a pairwise block, or None once the block is finished."""
     index = _pairwise_done_count(session, block)
     if index >= len(pairs):
-        _advance(session, step)
+        return None
+
+    if request.method == "POST":
+        # An invalid choice simply is not recorded, so the same trial reappears.
+        _record_pairwise(request, session, block, index, pairs[index])
         return redirect("project4:study")
 
+    corpus = get_movie_corpus()
     left_id, right_id = pairs[index]
     return render(request, "project4/pairwise.html", {
         "title": title,
@@ -274,8 +275,116 @@ def _run_pairwise_block(request, session, step, block, pairs, *, title, is_pract
     })
 
 
+# ── Ranking trial engine ────────────────────────────────────────────────────
+#
+# The browser posts the whole order back as a comma-separated list, which the
+# server accepts only if it is exactly a permutation of the movies it showed —
+# never trusting the client to have kept the set intact.
+
+def _ranking_done_count(session, block) -> int:
+    return RankingTrial.objects.filter(session=session, block=block).count()
+
+
+def _parse_submitted_order(request, movie_ids):
+    """The posted order, or None unless it permutes exactly the shown movies."""
+    raw = request.POST.get("ranked_movie_ids", "")
+    try:
+        order = [int(value) for value in raw.split(",") if value.strip()]
+    except (TypeError, ValueError):
+        return None
+    # One comparison rejects duplicates, omissions, extras and foreign ids.
+    if sorted(order) != sorted(int(m) for m in movie_ids):
+        return None
+    return order
+
+
+def _apply_move(order, move):
+    """Apply one `up:<id>` / `down:<id>` swap — the no-JavaScript fallback."""
+    direction, _, raw = move.partition(":")
+    try:
+        movie_id = int(raw)
+    except (TypeError, ValueError):
+        return order
+    if movie_id not in order:
+        return order
+
+    source = order.index(movie_id)
+    target = source - 1 if direction == "up" else source + 1
+    if direction not in ("up", "down") or not 0 <= target < len(order):
+        return order
+
+    order = list(order)
+    order[source], order[target] = order[target], order[source]
+    return order
+
+
+def _run_ranking_block(request, session, block, groups, *, step, title, is_practice=False):
+    """One trial of a ranking block, or None once the block is finished."""
+    index = _ranking_done_count(session, block)
+    if index >= len(groups):
+        return None
+
+    movie_ids = groups[index]
+    order = list(movie_ids)
+
+    if request.method == "POST":
+        submitted = _parse_submitted_order(request, movie_ids)
+        move = request.POST.get("move", "")
+        if move:
+            # Fallback path: one move per request, then re-render. Never reached
+            # when JavaScript is available, which reorders in place instead.
+            order = _apply_move(submitted if submitted is not None else order, move)
+        elif submitted is not None:
+            RankingTrial.objects.update_or_create(
+                session=session, block=block, task_index=index,
+                defaults={
+                    "movie_ids": [int(m) for m in movie_ids],
+                    "ranked_movie_ids": submitted,
+                    "response_time_ms": _parse_response_time(request),
+                },
+            )
+            return redirect("project4:study")
+        else:
+            # A tampered or truncated order is discarded rather than stored
+            # half-right; the participant is shown the same task again.
+            return redirect("project4:study")
+
+    corpus = get_movie_corpus()
+    return render(request, "project4/ranking.html", {
+        "title": title,
+        "progress": study_flow.progress(step),
+        "session": session,
+        "movies": [corpus.display_record(movie_id) for movie_id in order],
+        "order_csv": ",".join(str(movie_id) for movie_id in order),
+        "trial_number": index + 1,
+        "trial_total": len(groups),
+        "is_practice": is_practice,
+    })
+
+
+def _run_condition_block(request, session, which, plan, block, *, step, is_practice=False):
+    """Dispatch to whichever interface `which` names, for the given block."""
+    if which == study_flow.PAIRWISE:
+        return _run_pairwise_block(
+            request, session, block,
+            plan.practice_pairwise if is_practice else plan.pairwise,
+            step=step, is_practice=is_practice,
+            title="Practice" if is_practice else "Which would you rather watch?",
+        )
+    return _run_ranking_block(
+        request, session, block,
+        plan.practice_ranking if is_practice else plan.ranking,
+        step=step, is_practice=is_practice,
+        title="Practice" if is_practice else "Put these films in order",
+    )
+
+
 def practice(request):
-    """Step 4 — unscored practice so the interface is familiar before measurement."""
+    """Step 4 — unscored practice with *both* interfaces, before any measurement.
+
+    Both are practised up front, in the order the participant will meet them, so
+    neither condition gets a warm-up the other did not.
+    """
     session = _require_session(request)
     if session is None:
         return redirect("project4:index")
@@ -283,11 +392,16 @@ def practice(request):
         return redirect("project4:study")
 
     plan = _plan_for(session)
-    return _run_pairwise_block(
-        request, session, study_flow.PRACTICE, BLOCK_PRACTICE,
-        plan.practice_pairwise,
-        title="Practice", is_practice=True,
-    )
+    for which in study_flow.conditions_for_order(session.condition_order):
+        response = _run_condition_block(
+            request, session, which, plan, BLOCK_PRACTICE,
+            step=study_flow.PRACTICE, is_practice=True,
+        )
+        if response is not None:
+            return response
+
+    _advance(session, study_flow.PRACTICE)
+    return redirect("project4:study")
 
 
 def condition(request):
@@ -300,17 +414,11 @@ def condition(request):
         return redirect("project4:study")
 
     which = study_flow.condition_for_step(step, session.condition_order)
-    plan = _plan_for(session)
+    response = _run_condition_block(
+        request, session, which, _plan_for(session), BLOCK_MAIN, step=step,
+    )
+    if response is not None:
+        return response
 
-    if which == study_flow.PAIRWISE:
-        return _run_pairwise_block(
-            request, session, step, BLOCK_MAIN, plan.pairwise,
-            title="Which would you rather watch?",
-        )
-
-    # The ranking condition arrives in the next stage.
-    return render(request, "project4/pending.html", {
-        "title": "Ranking",
-        "progress": study_flow.progress(step),
-        "session": session,
-    })
+    _advance(session, step)
+    return redirect("project4:study")

@@ -420,3 +420,138 @@
 .p4-movie-card:hover .p4-movie-pick {
     background: #1e4a9a;
 }
+
+/* ── Ranking trial ── */
+.p4-rank-list {
+    list-style: none;
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0;
+    counter-reset: rank;
+}
+
+.p4-rank-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    background: #fff;
+    border: 1px solid #d7dee9;
+    border-radius: 6px;
+    cursor: grab;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.p4-rank-item:hover {
+    border-color: #275CB2;
+    box-shadow: 0 2px 8px rgba(39, 92, 178, 0.14);
+}
+
+/* The row being dragged: kept in place but visually detached. */
+.p4-rank-item--dragging {
+    opacity: 0.45;
+    border-style: dashed;
+    cursor: grabbing;
+}
+
+.p4-rank-grip {
+    color: #b6c0d0;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.p4-rank-number {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    line-height: 26px;
+    text-align: center;
+    background: #275CB2;
+    color: #fff;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.p4-rank-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+}
+
+/* Ten rows at once, so the film details are tighter than on a pairwise card. */
+.p4-rank-item .p4-movie-title {
+    font-size: 15.5px;
+    font-weight: 600;
+}
+
+.p4-rank-item .p4-movie-genres {
+    font-size: 13px;
+    margin-top: 0;
+    color: #555;
+}
+
+.p4-rank-item .p4-movie-meta {
+    font-size: 12px;
+}
+
+.p4-rank-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex-shrink: 0;
+}
+
+.p4-rank-move {
+    width: 34px;
+    height: 22px;
+    padding: 0;
+    line-height: 1;
+    font-size: 11px;
+    background: #eef2f8;
+    color: #275CB2;
+    border: 1px solid #d7dee9;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.p4-rank-move:hover:not(:disabled) {
+    background: #275CB2;
+    color: #fff;
+}
+
+.p4-rank-move:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.p4-rank-move:focus-visible {
+    outline: 2px solid #275CB2;
+    outline-offset: 1px;
+}
+
+.p4-rank-end {
+    max-width: 780px;
+    margin: 0 auto;
+    font-size: 12.5px;
+    color: #777;
+    text-align: center;
+}
+
+.p4-rank-end--top { margin-bottom: 6px; }
+.p4-rank-end--bottom { margin-top: 2px; }
+
+/* Screen-reader announcements after a move; visible so everyone gets feedback. */
+.p4-rank-status {
+    max-width: 780px;
+    margin: 10px auto 0;
+    min-height: 18px;
+    font-size: 13px;
+    color: #275CB2;
+    text-align: center;
+}
