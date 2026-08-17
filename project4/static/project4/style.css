@@ -217,3 +217,123 @@
     width: auto;
     padding: 0 26px;
 }
+
+/* ── Study progress indicator ── */
+.p4-progress {
+    max-width: 700px;
+    margin: 0 auto 18px;
+}
+
+.p4-progress-label {
+    font-size: 13px;
+    color: #777;
+    text-align: center;
+    margin-bottom: 6px;
+}
+
+.p4-progress-bar {
+    height: 8px;
+    background: #eef2f8;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.p4-progress-fill {
+    height: 100%;
+    background: #275CB2;
+    transition: width 0.3s ease;
+}
+
+/* ── Study forms ── */
+.p4-form {
+    max-width: 640px;
+    margin: 0 auto;
+}
+
+.p4-field {
+    margin-bottom: 18px;
+}
+
+.p4-field label {
+    display: block;
+    font-size: 15px;
+    color: #333;
+    margin-bottom: 6px;
+}
+
+.p4-field select,
+.p4-field input[type="text"] {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 15px;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.p4-checkbox-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    max-width: 640px;
+    margin: 0 auto 18px;
+    font-size: 14.5px;
+    line-height: 1.5;
+    color: #333;
+    cursor: pointer;
+}
+
+.p4-checkbox-row input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+/* ── Consent text ── */
+.p4-consent {
+    max-width: 720px;
+    margin: 0 auto;
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: #333;
+}
+
+.p4-consent p {
+    margin-bottom: 12px;
+}
+
+/* ── Instruction cards ── */
+.p4-howto {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.p4-howto-card {
+    flex: 1;
+    min-width: 260px;
+    max-width: 380px;
+    padding: 14px 18px;
+    background: #fafbfd;
+    border: 1px solid #ddd;
+    border-top: 3px solid #275CB2;
+    border-radius: 4px;
+}
+
+.p4-howto-card h3 {
+    font-size: 16px;
+    color: #275CB2;
+    margin: 0 0 8px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.p4-howto-card p {
+    font-size: 14px;
+    line-height: 1.55;
+    color: #333;
+    margin: 0;
+}

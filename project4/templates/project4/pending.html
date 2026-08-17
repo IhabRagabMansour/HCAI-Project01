@@ -1,0 +1,17 @@
+{% extends 'project4/study_base.html' %}
+
+{% block study_content %}
+
+<div class="p4-section">
+    <div class="p4-msg p4-msg--info">
+        This step (<strong>{{ progress.label }}</strong>) is implemented in a later
+        stage of the build. The study state machine has correctly advanced you here.
+    </div>
+    <table class="p4-detail-table">
+        <tr><th>Participant code</th><td><code>{{ session.participant_code }}</code></td></tr>
+        <tr><th>Condition order</th><td>{{ session.condition_order }}</td></tr>
+        <tr><th>Current step</th><td><code>{{ session.current_step }}</code></td></tr>
+    </table>
+</div>
+
+{% endblock %}

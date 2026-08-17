@@ -1,0 +1,55 @@
+{% extends 'project4/study_base.html' %}
+
+{% block study_content %}
+
+<div class="p4-section">
+    <h2 class="p4-section-title">Participant Information</h2>
+    <div class="p4-consent">
+        <p><strong>What is this study about?</strong><br>
+        We are comparing two ways of learning what kinds of films a person enjoys.
+        In one part you will choose between two films; in another you will put ten
+        films in order of preference. We want to find out which approach captures
+        your taste more efficiently.</p>
+
+        <p><strong>What will I be asked to do?</strong><br>
+        You will answer a few short background questions, complete some practice
+        tasks, then work through both interfaces
+        ({{ config.n_pairwise_trials }} pairwise choices and
+        {{ config.n_ranking_trials }} rankings of {{ config.ranking_size }} films),
+        with a short questionnaire after each and a break in between. At the end there
+        are a few final preference questions. It takes roughly 15&ndash;20 minutes.</p>
+
+        <p><strong>There are no right or wrong answers.</strong><br>
+        We are interested only in what <em>you</em> would rather watch.</p>
+
+        <p><strong>What data is collected?</strong><br>
+        Your choices and rankings, which films were shown, how long each task took,
+        and your questionnaire answers. You are identified only by a random code.
+        We do <em>not</em> collect your name, email address, or any other directly
+        identifying information.</p>
+
+        <p><strong>Can I withdraw?</strong><br>
+        Yes. You may stop at any point by closing the page, without giving a reason
+        and without any penalty. Data from incomplete sessions is excluded from
+        analysis.</p>
+
+        <p><strong>How is my data stored?</strong><br>
+        Responses are stored under your random participant code, kept securely, and
+        used only for this research. Results are reported in aggregate, so no
+        individual can be identified.</p>
+    </div>
+</div>
+
+<form method="post" class="p4-form">
+    {% csrf_token %}
+    <label class="p4-checkbox-row">
+        <input type="checkbox" name="consent" required>
+        <span>I have read and understood the information above, I am 18 or older,
+        and I agree to take part in this study.</span>
+    </label>
+    <div class="p4-actions">
+        <button type="submit">I consent &mdash; continue</button>
+    </div>
+</form>
+
+{% endblock %}

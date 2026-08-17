@@ -1,0 +1,56 @@
+{% extends 'project4/study_base.html' %}
+
+{% block study_content %}
+
+<div class="p4-section">
+    <h2 class="p4-section-title">How This Works</h2>
+    <p class="p4-report">
+        You will use <strong>two different interfaces</strong> for expressing your film
+        preferences. In both of them, please answer based on
+        <strong>what you would personally rather watch</strong> &mdash; not what you think
+        is the better film, or what is more famous.
+    </p>
+</div>
+
+<div class="p4-section">
+    <div class="p4-howto">
+        <div class="p4-howto-card">
+            <h3>Choosing between two films</h3>
+            <p>You see two films side by side. Click the one you would rather watch.
+            There is no &ldquo;correct&rdquo; answer and you cannot go back, so go with
+            your instinct.</p>
+        </div>
+        <div class="p4-howto-card">
+            <h3>Ranking ten films</h3>
+            <p>You see {{ config.ranking_size }} films. Put them in order from
+            <strong>most preferred at the top</strong> to least preferred at the bottom,
+            using drag-and-drop or the move buttons.</p>
+        </div>
+    </div>
+</div>
+
+<div class="p4-section">
+    <h2 class="p4-section-title">Before You Start</h2>
+    <ul class="p4-report-list">
+        <li>You will do a couple of <strong>practice tasks</strong> first &mdash; these
+            are just to get familiar with the interface and are not analysed.</li>
+        <li>If you do not recognise a film, that is fine &mdash; judge it from the
+            title, year, genres, and other details shown.</li>
+        <li>There is a short break between the two interfaces.</li>
+        <li>Please complete the study in one sitting if you can.</li>
+    </ul>
+    <p class="p4-hint">
+        You will begin with the
+        <strong>{% if first_condition == "pairwise" %}two-film choice{% else %}ten-film ranking{% endif %}</strong>
+        interface.
+    </p>
+</div>
+
+<form method="post" class="p4-form">
+    {% csrf_token %}
+    <div class="p4-actions">
+        <button type="submit">Start practice</button>
+    </div>
+</form>
+
+{% endblock %}

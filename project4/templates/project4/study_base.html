@@ -1,0 +1,18 @@
+{% extends 'project4/base.html' %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block project4_content %}
+
+<div class="p4-progress">
+    <div class="p4-progress-label">
+        Step {{ progress.number }} of {{ progress.total }} &mdash; {{ progress.label }}
+    </div>
+    <div class="p4-progress-bar">
+        <div class="p4-progress-fill" style="width: {{ progress.percent }}%;"></div>
+    </div>
+</div>
+
+{% block study_content %}{% endblock %}
+
+{% endblock %}

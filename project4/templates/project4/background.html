@@ -1,0 +1,58 @@
+{% extends 'project4/study_base.html' %}
+
+{% block study_content %}
+
+<div class="p4-section">
+    <h2 class="p4-section-title">A Few Questions About You</h2>
+    <p class="p4-hint">
+        These help us describe the participant group. Only what is useful for the
+        study is collected &mdash; nothing that identifies you.
+    </p>
+</div>
+
+<form method="post" class="p4-form">
+    {% csrf_token %}
+
+    <div class="p4-field">
+        <label for="age_range">Age range</label>
+        <select name="age_range" id="age_range" required>
+            <option value="">&mdash; select &mdash;</option>
+            <option value="18-24">18&ndash;24</option>
+            <option value="25-34">25&ndash;34</option>
+            <option value="35-44">35&ndash;44</option>
+            <option value="45-54">45&ndash;54</option>
+            <option value="55+">55+</option>
+            <option value="prefer_not_to_say">Prefer not to say</option>
+        </select>
+    </div>
+
+    <div class="p4-field">
+        <label for="movie_frequency">How often do you watch films?</label>
+        <select name="movie_frequency" id="movie_frequency" required>
+            <option value="">&mdash; select &mdash;</option>
+            <option value="daily">Almost daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">A few times a month</option>
+            <option value="rarely">Rarely</option>
+        </select>
+    </div>
+
+    <div class="p4-field">
+        <label for="recommender_familiarity">
+            How familiar are you with film recommendation systems
+            (e.g. Netflix suggestions)?
+        </label>
+        <select name="recommender_familiarity" id="recommender_familiarity" required>
+            <option value="">&mdash; select &mdash;</option>
+            <option value="very">Very familiar</option>
+            <option value="somewhat">Somewhat familiar</option>
+            <option value="not">Not familiar</option>
+        </select>
+    </div>
+
+    <div class="p4-actions">
+        <button type="submit">Continue</button>
+    </div>
+</form>
+
+{% endblock %}

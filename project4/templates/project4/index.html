@@ -65,10 +65,22 @@
 </div>
 
 <div class="p4-section">
+    <h2 class="p4-section-title">Take Part</h2>
+    <form method="post" action="{% url 'project4:start_study' %}">
+        {% csrf_token %}
+        <div class="p4-actions">
+            <button type="submit">▶ Start the study</button>
+        </div>
+    </form>
+    <p class="p4-hint">
+        Starting creates a new pseudonymous participant session. The study takes
+        roughly 15&ndash;20 minutes.
+    </p>
+</div>
+
+<div class="p4-section">
     <div class="p4-msg p4-msg--info">
-        The <strong>Download report</strong> and <strong>Start study</strong> actions are
-        added in later stages, together with the preference models and the participant
-        interface.
+        The <strong>Download report</strong> action is added in a later stage.
     </div>
 </div>
 
