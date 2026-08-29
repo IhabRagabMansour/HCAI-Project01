@@ -22,8 +22,6 @@
 <form method="post" class="p4-trial-form" id="ranking-form">
     {% csrf_token %}
     <input type="hidden" name="response_time_ms" id="response_time_ms" value="">
-    {# The whole order travels in this field; the server accepts it only if it
-       is exactly a permutation of the films it sent. #}
     <input type="hidden" name="ranked_movie_ids" id="ranked_movie_ids" value="{{ order_csv }}">
 
     <p class="p4-rank-end p4-rank-end--top">&uarr; Most preferred</p>
@@ -43,8 +41,6 @@
                 </span>
             </span>
 
-            {# Real buttons, so the list is fully operable by keyboard. Without
-               JavaScript they submit and the server performs the same swap. #}
             <span class="p4-rank-controls">
                 <button type="submit" name="move" value="up:{{ movie.movie_id }}"
                         class="p4-rank-move" data-direction="up"
