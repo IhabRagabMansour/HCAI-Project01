@@ -1,6 +1,6 @@
 """Generate the mandatory PDF report for Project 4.
 
-Follows the fourteen-section structure the project sheet recommends (§12):
+We organize the report into fourteen sections covering:
 introduction, dataset, Task 1 features, the pairwise model, Task 2 ranking
 model, research question, experimental design, participants, procedure,
 measures, planned analysis, ethics, interface, and limitations.
@@ -408,7 +408,7 @@ def build_report_pdf() -> bytes:
     para(
         "Comparing an equal <i>number of tasks</i> would be meaningless, since one "
         "ranking of ten contains far more preference information than one pairwise "
-        "choice. Of the three budgets the project sheet suggests &mdash; equal "
+        "choice. We considered three possible comparison budgets &mdash; equal "
         "time, equal films inspected, equal preference relations &mdash; we make "
         "<b>equal number of distinct films inspected</b> the primary budget:")
     S.append(_table([
