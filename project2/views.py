@@ -33,7 +33,7 @@ def _fmt_value(feat, val):
 
 
 def report(request):
-    """Written explanation of design choices (project sheet §21)."""
+    """Written explanation of design choices"""
     from .services.grids import TREE_MAX_LEAF_NODES_GRID, LOGREG_C_GRID
     context = {
         "title": "Project 2 — Design Report",
