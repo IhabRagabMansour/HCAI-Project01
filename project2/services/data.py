@@ -3,7 +3,7 @@
 Project 2 (Explainability) trains models to predict penguin `species` from the
 seven input features. This module centralizes:
 
-- loading + cleaning the dataset (drop missing rows, per the project sheet),
+- loading and cleaning the dataset by dropping rows with missing values,
 - a deterministic stratified train/test split,
 - the canonical feature groupings used everywhere downstream,
 - per-numeric-feature MAD (median absolute deviation) for the counterfactual
@@ -38,7 +38,7 @@ NUMERIC_FEATURES = [
 CATEGORICAL_FEATURES = ["island", "sex"]
 
 # Only these four biometric measurements are selectable for PDP/ALE (Task 5).
-# `year` is intentionally excluded (project sheet, common mistake #21).
+# `year` is intentionally excluded because it is not a biometric measurement.
 BIOMETRIC_FEATURES = [
     "bill_length_mm",
     "bill_depth_mm",
@@ -79,9 +79,9 @@ class PenguinData:
 def load_clean_penguins() -> pd.DataFrame:
     """Load Palmer Penguins and drop rows with any missing value.
 
-    The project sheet recommends ``dropna()`` for simplicity (§8.1). We keep
-    column order stable and reset the index so positional row selection in the
-    counterfactual UI is well-defined.
+    Missing rows are dropped for a compact, deterministic training dataset.
+    Column order is kept stable and the index is reset so positional row
+    selection in the counterfactual UI is well-defined.
     """
     from palmerpenguins import load_penguins
 
@@ -94,7 +94,7 @@ def load_clean_penguins() -> pd.DataFrame:
 
 def compute_mad(df: pd.DataFrame, numeric_features=NUMERIC_FEATURES) -> dict:
     """Per-feature MAD = median_i |x_ij - median_j|, floored at MAD_EPSILON
-    to avoid division by zero in the counterfactual distance (sheet §4.5).
+    to avoid division by zero in the counterfactual distance.
     """
     mad = {}
     for col in numeric_features:
@@ -118,7 +118,7 @@ def get_penguin_data(seed: int = 42, test_size: float = 0.2) -> PenguinData:
         X, y,
         test_size=test_size,
         random_state=seed,
-        stratify=y,                       # 3 classes — stratify (sheet §8.2)
+        stratify=y,                       # preserve class proportions
     )
 
     mad = compute_mad(df)

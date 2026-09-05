@@ -91,80 +91,9 @@ For Task 5, the user must be able to select one of these four numerical features
 
 Each PDP and ALE plot must show the effect of the selected feature on the predicted probability of each species.
 
-## 3. Required lectures and why they matter
+## 3. Complete project requirements
 
-## 3.1 Essential lectures
-
-### Lecture 2: Introduction to Explainability, Interpretability and Interpretable Models
-
-Needed for:
-
-- explainability versus interpretability
-- interpretable model classes
-- decision trees
-- logistic regression
-- model complexity
-- sparsity
-- the idea that fewer leaves in a decision tree make it easier to interpret
-
-This lecture is central for Tasks 1, 2, and 3.
-
-### Lecture 3: Post-Hoc Explanations
-
-Needed for:
-
-- counterfactual explanations
-- MAD weighted distance
-- local perturbation based explanations
-- PDP
-- ALE
-- model agnostic global explanation methods
-
-This lecture is central for Tasks 4 and 5.
-
-## 3.2 Useful background lectures
-
-### Lecture 1: Introduction
-
-Useful for:
-
-- supervised learning setup
-- dataset notation `D = {(x_i, y_i)}`
-- hypothesis class
-- loss function
-- penalization or regularization
-- minimizing penalized empirical loss
-
-This lecture supports the mathematical objective used in the project.
-
-### Lecture 4: Interpretable Machine Learning and Mechanistic Interpretability
-
-Useful for:
-
-- recap of counterfactual explanations
-- recap of global methods
-- PDP, M-Plot, and ALE context
-- broader interpretability background
-
-This lecture is useful as a recap, but it is not the main implementation lecture.
-
-## 3.3 Mostly not needed lectures
-
-### Lecture 5: Learning to Defer
-
-The uploaded Lecture 5 is mainly about learning to defer, rejection, and human AI teaming. It is not central to this project. However, the project sheet mentions MAD weighted L1 distance and says to see lecture 5. Because of this, check your course material for the MAD distance definition. In the uploaded material, counterfactuals and MAD are most directly connected to the post-hoc explanations content.
-
-### Lecture 6: Active Learning
-
-Not required for this project. The project does not ask for active learning, query strategies, or label acquisition.
-
-### Lecture 7: User Studies
-
-Not required for this project. The project asks for a user interface, but it does not ask for a user study, participant recruitment, evaluation protocol, or ethics application.
-
-## 4. Complete project requirements
-
-## 4.1 Global interface requirements
+## 3.1 Global interface requirements
 
 The final result should be one connected interactive dashboard.
 
@@ -187,7 +116,7 @@ This means the following parts must all depend on the same currently selected mo
 - PDP plot
 - ALE plot
 
-## 4.2 Task 1 requirements: Decision tree model
+## 3.2 Task 1 requirements: Decision tree model
 
 ### Required implementation
 
@@ -251,7 +180,7 @@ Use:
 model.get_n_leaves()
 ```
 
-## 4.3 Task 2 requirements: Decision tree regularization and lambda slider
+## 3.3 Task 2 requirements: Decision tree regularization and lambda slider
 
 ### Required implementation
 
@@ -305,7 +234,7 @@ It is exactly equivalent to **minimizing** `(1 - acc_test) + lambda * Omega(f)`
 model. The implementation uses the sheet's form directly (`acc_test - lambda*Omega`,
 maximized) in `services/selection.py`.
 
-## 4.4 Task 3 requirements: Logistic regression with model complexity
+## 3.4 Task 3 requirements: Logistic regression with model complexity
 
 ### Required implementation
 
@@ -408,7 +337,7 @@ categorical_features = ["island", "sex"]
 
 For Task 5, only use the four biometric numerical features for PDP and ALE selection.
 
-## 4.5 Task 4 requirements: Counterfactual explanations
+## 3.5 Task 4 requirements: Counterfactual explanations
 
 ### Required interface region
 
@@ -539,7 +468,7 @@ Optional but useful:
 - difference from original example
 - number of changed features
 
-## 4.6 Task 5 requirements: PDP and ALE plots
+## 3.6 Task 5 requirements: PDP and ALE plots
 
 ### Required interface region
 
@@ -600,7 +529,7 @@ Not allowed:
 - library functions that directly compute PDP
 - library functions that directly compute ALE
 
-## 5. PDP implementation knowledge
+## 4. PDP implementation knowledge
 
 A partial dependence plot shows the average model prediction when the selected feature is fixed to different values.
 
@@ -639,7 +568,7 @@ For this project:
 number_of_classes = 3
 ```
 
-## 6. ALE implementation knowledge
+## 5. ALE implementation knowledge
 
 Accumulated local effects show how a feature locally changes model predictions while reducing unrealistic extrapolation compared with PDP.
 
@@ -687,7 +616,7 @@ def compute_ale(model, X, feature, bins):
     return np.array(centers), ale
 ```
 
-## 7. ALE partial derivative question
+## 6. ALE partial derivative question
 
 The project asks:
 
@@ -727,9 +656,9 @@ Therefore, for a decision tree you should use discretization or finite differenc
 
 The finite difference ALE implementation described above works for both decision trees and logistic regression.
 
-## 8. Required preprocessing knowledge
+## 7. Required preprocessing knowledge
 
-## 8.1 Missing values
+## 7.1 Missing values
 
 The Palmer Penguins dataset contains missing values. You must handle them before training.
 
@@ -752,7 +681,7 @@ SimpleImputer(strategy="median")
 SimpleImputer(strategy="most_frequent")
 ```
 
-## 8.2 Train test split
+## 7.2 Train test split
 
 Use a train test split so `test accuracy` is meaningful.
 
@@ -770,7 +699,7 @@ train_test_split(
 
 Use `stratify=y` because the target has three classes.
 
-## 8.3 Encoding categorical features
+## 7.3 Encoding categorical features
 
 Categorical features:
 
@@ -783,7 +712,7 @@ Use one-hot encoding:
 OneHotEncoder(handle_unknown="ignore")
 ```
 
-## 8.4 Scaling numerical features
+## 7.4 Scaling numerical features
 
 Logistic regression should use scaled numerical features:
 
@@ -793,7 +722,7 @@ StandardScaler()
 
 Decision trees do not require scaling, but using a consistent preprocessing pipeline is acceptable.
 
-## 9. Required machine learning knowledge
+## 8. Required machine learning knowledge
 
 You need to understand:
 
@@ -814,7 +743,7 @@ You need to understand:
 - feature scaling
 - missing value handling
 
-## 10. Required explainability knowledge
+## 9. Required explainability knowledge
 
 You need to understand:
 
@@ -834,7 +763,7 @@ You need to understand:
 - partial derivatives for differentiable models
 - finite difference approximation for non-differentiable models
 
-## 11. Required programming knowledge
+## 10. Required programming knowledge
 
 You need to know these Python libraries or equivalents:
 
@@ -895,11 +824,11 @@ streamlit
 
 because it is fast to build dashboards with sliders, dropdowns, tables, and plots.
 
-## 12. Recommended dashboard structure
+## 11. Recommended dashboard structure
 
 A good dashboard can be organized like this:
 
-## 12.1 Sidebar controls
+## 11.1 Sidebar controls
 
 - model type selector: `Decision Tree` or `Logistic Regression`
 - lambda slider
@@ -907,7 +836,7 @@ A good dashboard can be organized like this:
 - optional number of sampled counterfactual candidates `N`
 - optional number of returned counterfactuals `k`
 
-## 12.2 Main area: selected model
+## 11.2 Main area: selected model
 
 Show:
 
@@ -927,7 +856,7 @@ For logistic regression:
 - show coefficient table
 - show number of nonzero coefficients
 
-## 12.3 Counterfactual region
+## 11.3 Counterfactual region
 
 Controls:
 
@@ -945,7 +874,7 @@ Outputs:
 - changed features
 - predicted probabilities
 
-## 12.4 Feature effect plots region
+## 11.4 Feature effect plots region
 
 Controls:
 
@@ -958,7 +887,7 @@ Outputs:
 - PDP plot with three curves
 - ALE plot with three curves
 
-## 13. Recommended implementation order
+## 12. Recommended implementation order
 
 Follow this order:
 
@@ -984,9 +913,9 @@ Follow this order:
 20. Test that all dashboard outputs update when model type or lambda changes.
 21. Write a short explanation of your design choices.
 
-## 14. Model complexity choices
+## 13. Model complexity choices
 
-## 14.1 Decision tree complexity
+## 13.1 Decision tree complexity
 
 Required:
 
@@ -1000,7 +929,7 @@ Implementation:
 complexity = tree_model.get_n_leaves()
 ```
 
-## 14.2 Logistic regression complexity
+## 13.2 Logistic regression complexity
 
 Recommended:
 
@@ -1035,7 +964,7 @@ complexity = np.linalg.norm(coefs)
 
 Choose one and clearly state it.
 
-## 15. Accuracy and selection checklist
+## 14. Accuracy and selection checklist
 
 For every trained model store:
 
@@ -1056,7 +985,7 @@ best_model = model_with_highest_score
 (Equivalently you may minimize `(1 - test_accuracy) + lambda_value * complexity`;
 both select the same model.)
 
-## 16. Counterfactual implementation checklist
+## 15. Counterfactual implementation checklist
 
 Your counterfactual code should:
 
@@ -1074,7 +1003,7 @@ Your counterfactual code should:
 - increase search radius or `N` if no candidates are found
 - display the results in the interface
 
-## 17. PDP implementation checklist
+## 16. PDP implementation checklist
 
 Your PDP code should:
 
@@ -1089,7 +1018,7 @@ Your PDP code should:
 - plot three curves
 - not use a PDP library function
 
-## 18. ALE implementation checklist
+## 17. ALE implementation checklist
 
 Your ALE code should:
 
@@ -1105,7 +1034,7 @@ Your ALE code should:
 - plot three curves
 - not use an ALE library function
 
-## 19. Final deliverables checklist
+## 18. Final deliverables checklist
 
 Your final project should include:
 
@@ -1132,7 +1061,7 @@ Your final project should include:
 - explanation of which model has exact ALE derivatives
 - explanation that decision trees need discretization or finite differences for ALE
 
-## 20. Common mistakes to avoid
+## 19. Common mistakes to avoid
 
 - Do not train only one model for Task 2. You need several models with different regularization levels.
 - Do not confuse the UI `lambda` with `max_leaf_nodes` or `C`.
@@ -1146,7 +1075,7 @@ Your final project should include:
 - Do not ignore the exact versus approximate derivative question for ALE.
 - Do not present `year` as one of the four numerical features for Task 5 unless the instructor explicitly allows it. The project asks for four numerical features, which are the four biometric measurements.
 
-## 21. Suggested report explanation
+## 20. Suggested report explanation
 
 In the written explanation or comments, include:
 
@@ -1164,7 +1093,7 @@ In the written explanation or comments, include:
 12. Why decision trees require discretization or finite differences.
 13. The selection formula `acc_test - lambda * Omega(f)` (maximized), and any notes about it.
 
-## 22. Minimal acceptance criteria
+## 21. Minimal acceptance criteria
 
 A minimal complete submission must satisfy all of the following:
 

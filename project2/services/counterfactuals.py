@@ -11,7 +11,7 @@ Given a selected model, an example x, and a target species, we:
 If none are found, we widen the search (more candidates, larger numeric noise,
 higher categorical-switch probability) and retry up to ``max_attempts``.
 
-Feature-type handling (project sheet §4.5):
+Feature-type handling:
 - biometric decimals  -> Gaussian noise  z = x + N(0, alpha * std), clipped to range
 - year (discrete)     -> rounded Gaussian, clipped to observed year range
 - island, sex (categ) -> keep with prob (1 - switch), else sample another category

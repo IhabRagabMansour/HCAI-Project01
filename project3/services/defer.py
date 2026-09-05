@@ -1,10 +1,9 @@
-"""Learning to defer (Task 3), grounded in Lecture 5.
+"""Learning to defer (Task 3).
 
 For each article the system chooses to either predict (classifier) or defer
 (expert). Two strategies are implemented and compared:
 
-1. Expert-advantage model (the lecture-aligned choice — the Bayes-optimal
-   deferral rule, Lecture 5 slide 16): defer when
+1. Expert-advantage model using the Bayes-optimal deferral rule: defer when
 
        P(expert correct | x)  >  max_y P(y | x)
 
@@ -14,10 +13,9 @@ For each article the system chooses to either predict (classifier) or defer
    TF-IDF features. This uses the expert's *competence*, unlike confidence-based
    rejection.
 
-2. Confidence threshold (the naïve rejection baseline, Lecture 5 slides 9–11):
+2. Confidence threshold, a naïve rejection baseline:
    defer when the classifier's top probability is below a tuned threshold. The
-   lecture critiques this because it ignores whether the expert is actually
-   better.
+    This ignores whether the expert is actually better.
 
 Both are trained where expert labels are available (the Task-3 setting) and
 evaluated on the test set with the full deferral-quality metric suite plus an
@@ -27,8 +25,8 @@ Design note: we deliberately do NOT learn P(classifier correct | x) as a second
 model. Individual classifier errors are nearly unpredictable from text, so such
 a model regresses to the high base rate (~0.97 everywhere), swamping the real
 expert advantage and preventing any deferral. The classifier's calibrated
-softmax confidence is a far better estimate of its own correctness — and is
-exactly what the slide-16 rule prescribes.
+softmax confidence is a far better estimate of its own correctness for this
+decision rule.
 """
 
 from __future__ import annotations
@@ -132,7 +130,7 @@ def build_deferral() -> dict:
     exp_pred_test = np.asarray(get_expert_test_predictions())
 
     # Strategy 1: Bayes-optimal deferral — defer when the expert is more likely
-    # correct than the classifier's own confidence (Lecture 5 slide 16).
+    # correct than the classifier's own confidence.
     p_exp_correct = c_exp.predict_proba(F_test)[:, 1]
     p_clf_conf = P_test.max(axis=1)          # classifier's own correctness estimate
     advantage = p_exp_correct - p_clf_conf

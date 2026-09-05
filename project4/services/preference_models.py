@@ -11,8 +11,8 @@ Pairwise (Bradley-Terry)
 
 Ranking (Task 2 — sequential Luce / Plackett-Luce)
 --------------------------------------------------
-Lecture 9 (slide 12) gives the Luce choice model
-``p(a | s, theta) = U(a) / sum_a' U(a')``. Reading a full ranking as *repeated
+The Luce choice model
+``p(a | s, theta) = U(a) / sum_a' U(a')`` can be read as *repeated
 choice from the remaining items* — pick the favourite, remove it, pick the
 favourite of the rest, and so on — turns that model into a likelihood for a
 complete ordering:
@@ -25,7 +25,7 @@ Why this extension:
   * for n = 2 it reduces **exactly** to Bradley-Terry (unit-tested below),
   * it reuses the same score w^T x, so neither interface gets an advantage,
   * it is a proper likelihood over the ordered list, so w is directly MLE-fittable,
-  * it follows the Luce model from the lecture rather than inventing a new one.
+    * it uses a standard finite-choice model with a direct ranking likelihood.
 
 Alternative considered: expand one ranking of 10 into its 45 implied pairwise
 comparisons and fit ordinary Bradley-Terry. That is simpler, but those 45
@@ -41,8 +41,7 @@ Both conditions are fit by maximizing a regularized log-likelihood
 
 which is MAP estimation under a zero-mean Gaussian prior. With d ~ 31 and only
 ~15-20 observations the problem is under-determined, so this term is not
-cosmetic: it is what keeps the estimate stable and is exactly the remedy for the
-"overconfidence from few comparisons" issue raised in Lecture 9.
+cosmetic: it keeps the estimate stable when only a few comparisons are available.
 """
 
 from __future__ import annotations

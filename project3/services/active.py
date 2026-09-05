@@ -1,11 +1,11 @@
-"""Active learning for expert-competence discovery (Task 4), grounded in Lecture 6.
+"""Active learning for expert-competence discovery (Task 4).
 
 From Task 4 the expert's labels are no longer available during training. The
 classifier is already trained on the full labeled set, but we must *actively
 query* the expert on selected training examples to learn the expert-correctness
 model P(expert correct | x) that drives the deferral decision.
 
-Pool-based loop (Lecture 6 slide 17):
+Pool-based loop:
     1. take a pool of unlabeled (no expert label) training examples,
     2. score each by a utility u(x),
     3. query the expert on the highest-utility example(s),
@@ -14,10 +14,10 @@ Pool-based loop (Lecture 6 slide 17):
 
 Query strategies compared:
   - "uncertainty": margin sampling on the classifier — u = 1 - (p_top1 - p_top2)
-    (Lecture 6 slide 25). Classifier-uncertain articles are disproportionately
+    Classifier-uncertain articles are disproportionately
     the Business/Sci-Tech cases where deferral matters, so this concentrates the
     budget on the deferral-relevant region.
-  - "random": the naive baseline (Lecture 6 slide 20), averaged over seeds.
+    - "random": a naive baseline, averaged over seeds.
 
 The deferral rule is unchanged (Bayes-optimal: defer when
 P(expert correct | x) > max_y P(y|x)); only the expert-correctness model is

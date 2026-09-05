@@ -1,7 +1,7 @@
 """Model complexity measures Omega(f) for the interpretability tradeoff.
 
-- Decision tree:  Omega = number of leaves         (project sheet §14.1, required)
-- Logistic reg.:  Omega = number of nonzero coefs  (project sheet §14.2, chosen)
+- Decision tree:  Omega = number of leaves
+- Logistic reg.:  Omega = number of nonzero coefficients
 
 The logistic-regression measure counts coefficients whose absolute value
 exceeds a small threshold, because L1 regularization drives coefficients close
