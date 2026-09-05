@@ -1,9 +1,8 @@
 """Study flow: condition counterbalancing and the step state machine.
 
 The participant walks a fixed sequence of steps. Which elicitation condition
-comes first depends on the session's counterbalancing group (Lecture 7: a
-within-subject design must counterbalance order, or condition is confounded with
-learning and fatigue effects):
+comes first depends on the session's counterbalancing group. A within-subject
+design counterbalances order to reduce learning and fatigue effects:
 
     Group AB   pairwise first, then ranking
     Group BA   ranking first, then pairwise

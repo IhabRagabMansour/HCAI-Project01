@@ -7,7 +7,7 @@ display, counterfactuals, PDP, ALE) derives from, which is what guarantees the
 
 On the selection score
 ----------------------
-The (updated) project sheet defines the criterion as the **maximizer** of
+The criterion is the **maximizer** of
 
     score = acc_test - lambda * Omega              # maximize
 
@@ -37,8 +37,10 @@ MODEL_CLASSES = [("tree", "Decision Tree"), ("logreg", "Logistic Regression")]
 
 
 def selection_score(test_acc: float, complexity: int, lam: float) -> float:
-    """Project-sheet accuracy/complexity tradeoff score: acc_test - lambda*Omega
-    (HIGHER is better; the interface shows the maximizer)."""
+    """Accuracy/complexity tradeoff score: acc_test - lambda*Omega.
+
+    Higher values are better; the interface displays the maximizing model.
+    """
     return test_acc - lam * complexity
 
 

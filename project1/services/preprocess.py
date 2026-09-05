@@ -33,12 +33,9 @@ class ExperimentConfig:
 class PreparedData:
     """Output of prepare_experiment.
 
-    After the Stage 8 pipeline refactor:
-    - X_train / X_test are raw pandas DataFrames (NOT yet transformed)
-    - preprocessing is an un-fit sklearn ColumnTransformer; train_and_score
-      wraps it with the estimator into a single Pipeline and fits both at once
-    - feature_names / n_features_after describe what comes OUT of the
-      preprocessor once it's fitted (computed via a clone fit on X_train)
+        X_train and X_test remain raw DataFrames. The un-fitted preprocessing
+        transformer is combined with the estimator during training, while the
+        feature metadata describes the transformed feature space.
     """
     X_train: pd.DataFrame
     X_test: pd.DataFrame

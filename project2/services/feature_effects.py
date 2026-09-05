@@ -1,21 +1,21 @@
 """Manual PDP and ALE for the four biometric features (Task 5).
 
-Implemented from scratch using only the model's ``predict_proba`` and numpy —
-no library PDP/ALE function is used (project sheet §5-6, §17-18). Each method
-returns three curves, one per species probability.
+Implemented from scratch using only the model's ``predict_proba`` and numpy;
+no library PDP/ALE function is used. Each method returns three curves, one per
+species probability.
 
-PDP  (Lecture 3, slide 29):  PD_f(x_A) = E_{x_B ~ marginal}[f(x_A, x_B)]
+PDP:  PD_f(x_A) = E_{x_B ~ marginal}[f(x_A, x_B)]
     estimated by replacing the feature with each grid value for ALL rows and
     averaging predict_proba. (Marginal expectation — may probe unrealistic
     feature combinations under correlation.)
 
-ALE  (Lecture 3, slide 31):  ALE_f(x_A) = ∫ E_{x_B|z_A}[∂f/∂z_A] dz_A − C
+ALE:  ALE_f(x_A) = ∫ E_{x_B|z_A}[∂f/∂z_A] dz_A − C
     estimated by finite differences inside equal-population bins (conditional
     distribution — only rows whose feature lies in the bin), accumulated, then
     centered to zero data-weighted mean. Finite differences work for both the
     differentiable logistic regression and the piecewise-constant decision tree.
 
-Three corrections over the project sheet's ALE pseudocode:
+Implementation details for the ALE calculation:
   1. half-open bins [lo, hi) (last bin closed) so edge points are not double-counted,
   2. data-weighted centering Σ(n_k·ale_k)/N (zero mean over the data, not over bins),
   3. empty bins contribute a zero local effect and carry the accumulator.

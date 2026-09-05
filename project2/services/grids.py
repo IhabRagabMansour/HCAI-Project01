@@ -5,9 +5,9 @@ The interface's lambda slider later selects the best entry post-hoc
 (see selection.py). Grids are cached by seed; the penguins dataset is tiny
 (~333 rows) so a full grid trains in well under a second.
 
-IMPORTANT distinction (project sheet §4.3): the per-model fitting parameter
-(`max_leaf_nodes` for trees, `C` for logistic regression) is NOT the interface
-lambda. lambda is applied after training to choose among these entries.
+Important distinction: the per-model fitting parameter (`max_leaf_nodes` for
+trees, `C` for logistic regression) is not the interface lambda. Lambda is
+applied after training to choose among these entries.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ def _build_l1_logreg(c: float, seed: int) -> LogisticRegression:
     return LogisticRegression(**kw)
 
 
-# Fitting-parameter grids (sheet §4.2, §4.3)
+# Fitting-parameter grids for the two model families.
 TREE_MAX_LEAF_NODES_GRID = [2, 3, 4, 5, 6, 8, 10, 15, 20, None]
 LOGREG_C_GRID = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0]
 

@@ -1,7 +1,7 @@
 """Movie sampling for the study.
 
-The project sheet explicitly permits sampling movies **uniformly at random**,
-which is what we do. The important design work is not the sampling distribution
+Movies are sampled **uniformly at random**. The important design work is not the
+sampling distribution
 but the *allocation*: to control carry-over between conditions, every session
 draws one pool of distinct movies and splits it into four disjoint parts —
 
@@ -31,7 +31,7 @@ class StudyConfig:
 
     n_pairwise_trials: int = 15
     n_ranking_trials: int = 3
-    ranking_size: int = 10          # the sheet requires exactly ten movies
+    ranking_size: int = 10          # each ranking contains exactly ten movies
     n_heldout_pairs: int = 10
     n_practice_pairwise: int = 1
     n_practice_ranking: int = 1

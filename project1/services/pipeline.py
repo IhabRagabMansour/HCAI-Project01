@@ -4,7 +4,7 @@ Builds a single object that bundles preprocessing (per-column transformations)
 with the final estimator. Saving/loading the whole Pipeline means single-row
 prediction at evaluation time becomes a one-liner: ``pipeline.predict(new_row)``.
 
-Used by the Stage 8b refactor of preprocess.py / train.py / evaluate.py.
+Used by preprocessing, training, evaluation, and prediction services.
 """
 
 from __future__ import annotations

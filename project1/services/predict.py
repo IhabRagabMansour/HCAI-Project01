@@ -1,9 +1,7 @@
-"""Single-row prediction helpers.
+"""Helpers for predicting from a persisted preprocessing-and-estimator pipeline.
 
-The Stage 8 Pipeline refactor stored a complete (preprocessor + estimator)
-sklearn Pipeline on each TrainedModel, which is what makes this possible:
-``pipeline.predict(single_row_dataframe)`` handles all preprocessing identically
-to training, with no manual encoding/scaling required at predict time.
+``pipeline.predict(single_row_dataframe)`` applies the same transformations used
+during training, so prediction does not need separate encoding or scaling logic.
 """
 
 from __future__ import annotations

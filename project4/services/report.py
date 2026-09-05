@@ -48,7 +48,7 @@ def _styles():
                         spaceAfter=4, textColor=colors.HexColor("#1e4a9a"))
     body = ParagraphStyle("Body", parent=base["BodyText"], fontSize=9.7, leading=13.6,
                           alignment=TA_LEFT, spaceAfter=6)
-    # Formulas are set in the plain-text mathematical notation used by the course
+    # Formulas use plain-text mathematical notation for reliable PDF rendering.
     # materials. The built-in PDF fonts are WinAnsi-encoded and carry no Greek or
     # mathematical operators, so a typeset sigma or product sign would be dropped
     # silently; ASCII renders identically everywhere and cannot fail that way.
@@ -299,8 +299,7 @@ def build_report_pdf() -> bytes:
         f"( lambda = {DEFAULT_REGULARIZATION} )", formula)
     para(
         "which is MAP estimation under a zero-mean Gaussian prior. This is not "
-        "cosmetic: it is precisely the remedy Lecture 9 prescribes for "
-        "overconfidence from few comparisons, and it keeps a participant who "
+        "cosmetic: it prevents overconfidence from few comparisons and keeps a participant who "
         "answers consistently from producing an arbitrarily confident model.")
 
     # ── 5. Task 2 — Ranking model ───────────────────────────────────────────
@@ -362,8 +361,7 @@ def build_report_pdf() -> bytes:
     # ── 6. Task 3 — Research question and hypotheses ────────────────────────
     para("6. Task 3 &mdash; Research question and hypotheses", h1)
     para(
-        "Following Lecture 7&rsquo;s framing &mdash; <i>to what end do you want to "
-        "test what with whom in which context?</i> &mdash; the study asks:")
+        "The study asks:")
     para(
         "<b>Which elicitation interface learns a new user&rsquo;s film preferences "
         "more effectively for the same number of films inspected: repeated pairwise "
@@ -439,8 +437,8 @@ def build_report_pdf() -> bytes:
 
     para("7.3 Movie sampling and carry-over control", h2)
     para(
-        "The project sheet permits uniform random sampling, which is what we do; "
-        "the design work is in the <i>allocation</i>. Each session draws one pool "
+        "Uniform random sampling is used; the design work is in the <i>allocation</i>. "
+        "Each session draws one pool "
         f"of {cfg.movies_needed} distinct films from a seed stored with the "
         "session, and splits it into four <b>disjoint</b> parts: practice, "
         "pairwise, ranking, and held-out evaluation. No participant ever sees the "
@@ -495,8 +493,8 @@ def build_report_pdf() -> bytes:
 
     para("8.1 Sample-size planning", h2)
     para(
-        "The project sheet prescribes no participant count, so we plan one rather "
-        "than assert one. The primary comparison is a paired test of a "
+        "The specification does not prescribe a participant count, so we plan one "
+        "rather than assert one. The primary comparison is a paired test of a "
         "within-participant difference, for which the required sample size at "
         f"significance alpha = {ALPHA} (two-sided) and power {POWER:.0%} is "
         "approximately")
@@ -567,8 +565,8 @@ def build_report_pdf() -> bytes:
 
     para("9.1 Pilot", h2)
     para(
-        "Following Lecture 7, the protocol would first be piloted with 5&ndash;10 "
-        "participants to check instruction clarity, task duration, and that the "
+        "The protocol would first be piloted with 5&ndash;10 participants to check "
+        "instruction clarity, task duration, and that the "
         "logging captures what the analysis needs. <b>Pilot data would not be "
         "merged into the main dataset</b>, and any change to the protocol after "
         "piloting would be frozen before real collection begins.")
@@ -657,8 +655,8 @@ def build_report_pdf() -> bytes:
         "participant at the end, because it is the only way for them to request "
         "deletion &mdash; and precisely because we cannot otherwise find their "
         "record, which is the point.",
-        "<b>GDPR.</b> Lecture 7 notes that interaction sequences can be indirect "
-        "identifiers even without names, so the logs are treated as personal data: "
+        "<b>GDPR.</b> Interaction sequences can be indirect identifiers even without "
+        "names, so the logs are treated as personal data: "
         "lawful basis is consent, processing is limited to the stated research "
         "purpose, and participants have access and erasure rights via their code.",
         "<b>Storage and retention.</b> Data stored server-side, not in the "
@@ -677,7 +675,7 @@ def build_report_pdf() -> bytes:
     para("13. Interface implementation", h1)
     para(
         "The interface is a Django app (<font face='Courier'>project4</font>) in "
-        "the shared course repository, with the mathematics in a services layer "
+        "the shared repository, with the mathematics in a services layer "
         "that has no Django dependency and is unit-tested independently of the web "
         "layer.")
 
@@ -764,7 +762,7 @@ def build_report_pdf() -> bytes:
     ])
     para("<b>Extensions worth pursuing.</b>")
     bullets([
-        "<b>Adaptive query selection</b> (Lecture 6): choose pairs whose predicted "
+        "<b>Adaptive query selection</b>: choose pairs whose predicted "
         "probability is nearest 0.5, or ranking sets spanning still-uncertain "
         "directions of w. This attacks the sample-inefficiency limitation "
         "directly and would form a natural third condition.",

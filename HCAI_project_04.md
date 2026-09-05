@@ -147,216 +147,7 @@ U(x) = w^T x
 
 The elicitation process should collect preference observations and use them to estimate `w`.
 
-## 4. Lectures needed for Project 4
-
-## 4.1 Essential lecture: Lecture 9 - Advanced Problems in User Modeling
-
-This is the most important modeling lecture for Project 4.
-
-### Needed concepts
-
-#### General probabilistic user model
-
-Lecture 9 describes a user model in the general form:
-
-```text
-p(a | s, theta)
-```
-
-where:
-
-- `a` is the user's action,
-- `s` is the current situation or choice context,
-- `theta` is a user-specific parameter.
-
-For Project 4, the user-specific parameter is naturally identified with the latent preference vector `w`.
-
-#### Utility-based choice and Luce models
-
-Lecture 9 introduces Luce models for choosing one action from a finite set:
-
-```text
-p(a | s, theta) = U(a | s, theta) / sum_a' U(a' | s, theta)
-```
-
-with positive choice utilities.
-
-For Project 4, use a linear latent score:
-
-```text
-s_i = w^T x_i
-```
-
-and convert it to a positive choice weight:
-
-```text
-v_i = exp(s_i)
-```
-
-This gives the standard Bradley-Terry pairwise form and naturally extends to ranking multiple items.
-
-#### Inference of user models
-
-Lecture 9 explains that a user-specific parameter must be inferred from observed actions. The relevant frequentist method is maximum likelihood estimation (MLE): choose the parameter that maximizes the likelihood of the observed user choices.
-
-This is directly applicable to estimating `w` from pairwise choices or rankings.
-
-#### Optional Bayesian extension
-
-Lecture 9 also explains Bayesian inference and the danger of becoming overconfident from only a few comparisons. This is useful background because Project 4 explicitly focuses on learning preferences from a limited number of interactions.
-
-A Bayesian implementation is **not required** by the project sheet, but it would be a valid extension.
-
-### Most relevant Lecture 9 slide regions
-
-- user model formalization: around slides 6 to 8,
-- Luce models: around slide 12,
-- inference and maximum likelihood: around slides 16 to 22,
-- uncertainty and Bayesian inference: around slides 24 to 28.
-
-## 4.2 Essential lecture: Lecture 7 - Designing and Organizing a User Study
-
-This is the most important lecture for Task 3 and the participant-facing workflow in Task 4.
-
-### Needed concepts
-
-#### The key user-study question
-
-Lecture 7 summarizes study design with:
-
-```text
-To what end do you want to test what with whom in which context?
-```
-
-For Project 4 you must explicitly answer:
-
-- **To what end?** Compare the two preference elicitation methods.
-- **What?** Define the dependent measures, such as preference prediction quality, time, number of interactions, or subjective effort.
-- **With whom?** Define the target participant population and recruitment criteria.
-- **In which context?** Define whether the study is online or in a lab, what device is used, and what participants are told.
-
-#### The six user-study steps
-
-Lecture 7 gives six stages that should appear in your Task 3 protocol:
-
-1. Define the research goal and motivation.
-2. Design the study.
-3. Prepare materials and procedure.
-4. Pilot the study.
-5. Collect data.
-6. Analyze and report results.
-
-The lecture specifically recommends piloting with a small group, typically 5 to 10 users, and not mixing pilot data into the final study data.
-
-#### Experimental design
-
-Project 4 compares two interfaces, so it is naturally an **experimental study**.
-
-Lecture 7 distinguishes:
-
-- between-subjects designs,
-- within-subject designs,
-- mixed designs.
-
-A **within-subject design is strongly recommended** for this project because each participant can try both elicitation methods, which reduces variability caused by different movie tastes across participants.
-
-However, within-subject designs create order, learning, fatigue, and expectation effects. Lecture 7 therefore recommends **counterbalancing**. For two conditions:
-
-- half of participants use pairwise first, then ranking,
-- half use ranking first, then pairwise.
-
-This is a recommendation, not an explicit requirement of the Project 4 sheet. If you choose a between-subjects design instead, justify why.
-
-#### Ethics and privacy
-
-Lecture 7 requires good practice for human studies:
-
-- informed consent,
-- participants may withdraw without penalty,
-- collect only necessary personal data,
-- anonymize or pseudonymize where possible,
-- store data securely,
-- define objective exclusion criteria before data collection,
-- provide clear instructions and a debriefing.
-
-The lecture also explains that user-study data can fall under GDPR, including indirect identifiers such as interaction sequences.
-
-#### Analysis
-
-Lecture 7 covers:
-
-- data cleaning,
-- descriptive statistics,
-- inferential statistics,
-- hypothesis testing,
-- p-values,
-- multiple-comparison problems.
-
-You do not have to actually analyze data in this project, but the report should specify **how you would analyze it if the study were run**.
-
-### Most relevant Lecture 7 slide regions
-
-- key study question and six steps: around slides 6 to 17,
-- experimental design: around slides 23 to 41,
-- ethics and GDPR: around slides 46 to 51,
-- analysis and hypothesis testing: around slides 53 to 66.
-
-## 4.3 Useful lecture: Lecture 8 - From Interactive Machine Learning to User Modeling
-
-Lecture 8 is useful background for the recommender-system and interface aspects.
-
-### Needed concepts
-
-- Interactive ML uses a feedback loop between the user and the model.
-- The human is an active collaborator rather than only a passive source of data.
-- User models can describe preferences and tastes.
-- Recommender systems can build a user representation from interaction data.
-- Content-based recommenders use item features to represent items and construct user profiles.
-
-This project is not a traditional collaborative filtering problem because the IMDB dataset has no user rating matrix. The relevant Lecture 8 idea is therefore **content-based representation and user profiling**, not user-user collaborative filtering.
-
-### Most relevant Lecture 8 slide regions
-
-- Interactive ML and GUI motivation: around slides 5 to 9,
-- user modeling and preferences: around slides 19 to 21,
-- recommender-system example: around slides 23 to 41,
-- content-based filtering: around slides 39 to 41.
-
-## 4.4 Optional lecture: Lecture 6 - Active Learning
-
-Lecture 6 is **not required for the minimum Project 4 solution** because the project sheet explicitly allows movies to be selected uniformly at random.
-
-It becomes useful only for the suggested extension involving informative or adaptive movie selection.
-
-Relevant ideas include:
-
-- a query strategy chooses what to ask next,
-- uniform random selection is the simplest query strategy,
-- information-based methods choose queries expected to reduce uncertainty,
-- representation-based methods choose diverse or representative examples.
-
-For a stronger extension, you could adapt these ideas to select movie pairs or ranking sets that are expected to be most informative about `w`.
-
-## 4.5 Optional lecture: Lecture 12 - Fairness, Privacy and Data Sovereignty
-
-Lecture 12 is not central to the mathematical tasks, but its privacy discussion is relevant if the study stores participant information or preference logs.
-
-For the required user-study ethics, Lecture 7 is already the primary source.
-
-## 4.6 Lectures mostly not needed
-
-The following lectures are not central to Project 4 unless you add a special extension:
-
-- Lecture 2: Explainability
-- Lecture 3: Post-hoc explanations
-- Lecture 4: Interpretability
-- Lecture 5: Learning to Defer
-- Lecture 10: Imitation Learning
-- Lecture 11: AI Safety
-
-Lecture 1 provides general ML background but is not needed for the project-specific methods.
-
-## 5. Task 1 - Feature representation for movies
+## 4. Task 1 - Feature representation for movies
 
 ### Official requirement
 
@@ -454,7 +245,7 @@ def transform_movies(dataframe, encoder):
 
 The same representation must be used by both elicitation conditions.
 
-## 6. Preference model for pairwise comparisons
+## 5. Preference model for pairwise comparisons
 
 For a movie `i`, define the latent score:
 
@@ -490,7 +281,7 @@ maximize L_pair(w) - lambda_reg * ||w||_2^2
 
 Regularization is a recommended stability choice, not an explicit Project 4 requirement.
 
-## 7. Task 2 - Extend Bradley-Terry to full rankings
+## 6. Task 2 - Extend Bradley-Terry to full rankings
 
 ### Official requirement
 
@@ -506,7 +297,7 @@ You must explain and justify the formulation.
 
 ### Recommended formulation: sequential Luce / Plackett-Luce ranking model
 
-The cleanest extension follows the Luce finite-choice model from Lecture 9.
+The cleanest extension follows the Luce finite-choice model.
 
 For a displayed set of `n` movies with scores:
 
@@ -537,7 +328,7 @@ The final item has probability 1 once all other movies have been selected, so th
 
 - For `n = 2`, it reduces exactly to the Bradley-Terry pairwise probability.
 - It uses the same latent score `w^T x` for both interfaces.
-- It follows the Luce model introduced in Lecture 9.
+- It follows the Luce finite-choice model.
 - It gives a valid likelihood for a complete ordered list.
 - It allows `w` to be fitted directly from ranking data by maximum likelihood.
 
@@ -567,7 +358,7 @@ For a ranking of 10 items this creates 45 pairwise relations.
 
 This is simpler, but those pairwise relations come from the same ranking and are not independent observations. The sequential Luce formulation is therefore more principled as a direct ranking likelihood.
 
-## 8. Fitting both preference models consistently
+## 7. Fitting both preference models consistently
 
 To compare the two interfaces fairly:
 
@@ -590,7 +381,7 @@ def fit_ranking_model(rankings, X, regularization):
 
 The project does not require a specific optimizer. You may use SciPy optimization, PyTorch, or another suitable numerical method.
 
-## 9. Task 3 - Complete user study design
+## 8. Task 3 - Complete user study design
 
 ### Official requirement
 
@@ -608,7 +399,7 @@ You must choose and justify at least:
 
 Again, you **do not have to run the study**.
 
-## 9.1 Recommended research question
+## 8.1 Recommended research question
 
 A strong research question is:
 
@@ -617,7 +408,7 @@ Which elicitation interface learns a new user's movie preferences more efficient
 pairwise choices or rankings of ten movies?
 ```
 
-## 9.2 Recommended hypotheses
+## 8.2 Recommended hypotheses
 
 A concrete primary hypothesis could be:
 
@@ -648,7 +439,7 @@ Therefore, comparing only an equal **number of tasks** may be misleading. A fair
 
 Choose one primary budget and justify it in the report.
 
-## 9.3 Independent and dependent variables
+## 8.3 Independent and dependent variables
 
 ### Independent variable
 
@@ -679,7 +470,7 @@ Recommended secondary measures include:
 
 The project sheet does not mandate specific metrics. The report must define and justify them.
 
-## 9.4 Recommended experimental design
+## 8.4 Recommended experimental design
 
 ### Within-subject design
 
@@ -711,7 +502,7 @@ To reduce memory and carry-over effects:
 
 The final held-out evaluation set can be shared across both learned models so that both are evaluated against the same participant judgments.
 
-## 9.5 Recruitment plan
+## 8.5 Recruitment plan
 
 The project sheet requires you to choose a recruitment process but does not prescribe the population.
 
@@ -738,7 +529,7 @@ The report should define:
 
 Do not invent a mandatory participant count. The Project 4 sheet provides none.
 
-## 9.6 Recommended study procedure
+## 8.6 Recommended study procedure
 
 A complete practical protocol can be:
 
@@ -812,7 +603,7 @@ Use the participant responses only for evaluation, not for refitting either mode
 
 Ask which interface the participant preferred and why, then provide a debriefing.
 
-## 9.7 Movie sampling
+## 8.7 Movie sampling
 
 ### Minimum required approach
 
@@ -832,7 +623,7 @@ When sampling, consider:
 
 ### Optional adaptive extension
 
-A stronger extension can choose movie queries based on how informative they are expected to be about `w`, using ideas from Lecture 6.
+A stronger extension can choose movie queries based on how informative they are expected to be about `w`.
 
 Examples:
 
@@ -842,7 +633,7 @@ Examples:
 
 This is optional, not required.
 
-## 9.8 Evaluation strategy
+## 8.8 Evaluation strategy
 
 Because the true human `w` is unknown, do **not** make estimation error `||w_hat - w||` the primary human-study metric.
 
@@ -878,7 +669,7 @@ Since the project goal says the recommender should adapt **quickly**, evaluate p
 
 This lets you compare sample efficiency and interaction efficiency.
 
-## 9.9 Planned statistical analysis
+## 8.9 Planned statistical analysis
 
 Because the recommended design is within-subject, the primary comparison is paired by participant.
 
@@ -892,9 +683,9 @@ The report should state:
 
 Possible choices depend on the data distribution and metric. For example, a paired t-test can compare participant-level scores if its assumptions are reasonable; a non-parametric paired test can be chosen otherwise.
 
-Lecture 7 emphasizes that hypotheses and exclusion criteria should be defined before looking at final results.
+Hypotheses and exclusion criteria should be defined before looking at final results.
 
-## 9.10 Data cleaning and exclusions
+## 8.10 Data cleaning and exclusions
 
 Predefine objective exclusion rules, such as:
 
@@ -905,7 +696,7 @@ Predefine objective exclusion rules, such as:
 
 Do not remove participants merely because their data does not support the hypothesis.
 
-## 9.11 Ethics and privacy checklist
+## 8.11 Ethics and privacy checklist
 
 If the study were conducted:
 
@@ -919,7 +710,7 @@ If the study were conducted:
 - check institutional ethics requirements before recruitment,
 - comply with applicable GDPR requirements.
 
-## 10. Task 4 - Implement the participant interface
+## 9. Task 4 - Implement the participant interface
 
 ### Official requirement
 
@@ -927,7 +718,7 @@ Implement the interface that would be given to a participant in the study.
 
 The interface must support the study design described in Task 3.
 
-## 10.1 Landing page requirements
+## 9.1 Landing page requirements
 
 The Project 4 landing page should contain at least:
 
@@ -935,7 +726,7 @@ The Project 4 landing page should contain at least:
 - **Download report** button,
 - **Start study** button.
 
-## 10.2 Pairwise condition
+## 9.2 Pairwise condition
 
 For each pairwise task, display two movies side by side.
 
@@ -957,7 +748,7 @@ Recommended interface behavior:
 - record response time,
 - avoid showing model predictions because they could influence the participant.
 
-## 10.3 Ranking condition
+## 9.3 Ranking condition
 
 Display exactly **ten movies** for the ranking condition, as required by the project sheet.
 
@@ -977,7 +768,7 @@ Before submission:
 - prevent duplicates,
 - clearly indicate that rank 1 means most preferred.
 
-## 10.4 Study state
+## 9.4 Study state
 
 The interface should track at least:
 
@@ -995,7 +786,7 @@ study completion status
 
 Use Django sessions or database models depending on your architecture.
 
-## 10.5 Recommended Django models
+## 9.5 Recommended Django models
 
 If you persist study data, possible models include:
 
@@ -1034,7 +825,7 @@ RankingTrial:
 
 The exact database design is your choice.
 
-## 10.6 Study progress and stopping rule
+## 9.6 Study progress and stopping rule
 
 The Project 4 sheet does not specify:
 
@@ -1047,7 +838,7 @@ You must choose these as part of Task 3 and make the interface consistent with t
 
 A good report explains why the selected budget gives a meaningful comparison without excessive participant fatigue.
 
-## 11. Recommended model update behavior in the interface
+## 10. Recommended model update behavior in the interface
 
 The study can estimate `w` after every response or after each block.
 
@@ -1066,9 +857,9 @@ If movie selection is uniformly random, step 5 is simple random sampling.
 
 Do not display the current `w` or recommendations to participants unless your experimental protocol explicitly includes that information, because feedback from the model could change subsequent preferences and become a confound.
 
-## 12. Recommended report structure
+## 11. Recommended report structure
 
-## 12.1 Introduction
+## 11.1 Introduction
 
 Explain:
 
@@ -1076,7 +867,7 @@ Explain:
 - cold-start motivation for a new movie recommender user,
 - why comparing pairwise and ranking interfaces is useful.
 
-## 12.2 Dataset
+## 11.2 Dataset
 
 Describe:
 
@@ -1085,7 +876,7 @@ Describe:
 - metadata used for features,
 - filtering and missing-value handling.
 
-## 12.3 Task 1 - Feature representation
+## 11.3 Task 1 - Feature representation
 
 Include:
 
@@ -1096,7 +887,7 @@ Include:
 - justification,
 - feature extraction implementation.
 
-## 12.4 Pairwise preference model
+## 11.4 Pairwise preference model
 
 Include:
 
@@ -1106,7 +897,7 @@ Include:
 - method used to estimate `w`,
 - regularization if used.
 
-## 12.5 Task 2 - Ranking model
+## 11.5 Task 2 - Ranking model
 
 Include:
 
@@ -1115,7 +906,7 @@ Include:
 - demonstration that the two-item case reduces to Bradley-Terry,
 - ranking likelihood and estimation method.
 
-## 12.6 Task 3 - Research question and hypotheses
+## 11.6 Task 3 - Research question and hypotheses
 
 State:
 
@@ -1124,7 +915,7 @@ State:
 - null hypothesis,
 - secondary hypotheses if used.
 
-## 12.7 Experimental design
+## 11.7 Experimental design
 
 Describe:
 
@@ -1136,7 +927,7 @@ Describe:
 - movie sampling,
 - held-out evaluation.
 
-## 12.8 Participants and recruitment
+## 11.8 Participants and recruitment
 
 Describe:
 
@@ -1147,11 +938,11 @@ Describe:
 - compensation,
 - sample-size planning.
 
-## 12.9 Procedure
+## 11.9 Procedure
 
 Give the full chronological procedure that would be followed in practice.
 
-## 12.10 Measures
+## 11.10 Measures
 
 Separate:
 
@@ -1159,7 +950,7 @@ Separate:
 - interaction measures,
 - subjective measures.
 
-## 12.11 Planned analysis
+## 11.11 Planned analysis
 
 Explain:
 
@@ -1168,7 +959,7 @@ Explain:
 - descriptive statistics and plots,
 - handling of multiple hypotheses if applicable.
 
-## 12.12 Ethics and data protection
+## 11.12 Ethics and data protection
 
 Explain:
 
@@ -1179,7 +970,7 @@ Explain:
 - secure storage,
 - planned retention/deletion.
 
-## 12.13 Interface implementation
+## 11.13 Interface implementation
 
 Describe:
 
@@ -1189,7 +980,7 @@ Describe:
 - study state and logging,
 - how the interface matches the planned protocol.
 
-## 12.14 Limitations and extensions
+## 11.14 Limitations and extensions
 
 Possible limitations:
 
@@ -1203,7 +994,7 @@ Possible extension:
 
 - adaptive query selection based on information gain or uncertainty.
 
-## 13. Full interface checklist
+## 12. Full interface checklist
 
 ### Landing page
 
@@ -1248,7 +1039,7 @@ Possible extension:
 - [ ] Held-out evaluation implemented if included
 - [ ] Final debrief/completion page
 
-## 14. Task-by-task acceptance checklist
+## 13. Task-by-task acceptance checklist
 
 ## Task 1
 
@@ -1294,7 +1085,7 @@ Possible extension:
 - [ ] Landing page links to study
 - [ ] Landing page provides PDF report download
 
-## 15. Minimum viable implementation
+## 14. Minimum viable implementation
 
 A minimum solid submission should contain:
 
@@ -1309,7 +1100,7 @@ A minimum solid submission should contain:
 9. Landing page with **Start study** and **Download report** actions.
 10. PDF report describing Tasks 1 to 3 and design choices.
 
-## 16. Stronger implementation ideas
+## 15. Stronger implementation ideas
 
 These are optional improvements, not requirements:
 
@@ -1325,13 +1116,13 @@ These are optional improvements, not requirements:
 - simulation mode for testing the study without recruiting participants,
 - compare MLE with Bayesian estimation of `w`.
 
-## 17. Important distinctions
+## 16. Important distinctions
 
 ### Required versus recommended ranking model
 
 The project requires **an extension of Bradley-Terry to rankings**, but it does not name the extension.
 
-The sequential Luce / Plackett-Luce formulation in this document is a recommended solution derived naturally from Lecture 9.
+The sequential Luce / Plackett-Luce formulation in this document is a recommended solution derived naturally from the probabilistic user model.
 
 ### Required versus optional query selection
 
@@ -1357,7 +1148,7 @@ The project does not prescribe a single metric for comparing the two interfaces.
 
 Your report must define metrics that match your hypothesis. Held-out predictive performance and interaction efficiency are strong choices.
 
-## 18. Common mistakes to avoid
+## 17. Common mistakes to avoid
 
 - Treating the IMDB 5000 dataset as if it already contains user ratings.
 - Using a different movie feature representation for the two conditions.
@@ -1374,7 +1165,7 @@ Your report must define metrics that match your hypothesis. Held-out predictive 
 - Forgetting the required landing page with both **report download** and **start study** actions.
 - Reporting made-up user-study results even though the project only asks for the protocol.
 
-## 19. Recommended implementation order
+## 18. Recommended implementation order
 
 1. Load and inspect IMDB 5000 data.
 2. Choose and implement the movie feature representation.
@@ -1394,7 +1185,7 @@ Your report must define metrics that match your hypothesis. Held-out predictive 
 16. Add the report download button.
 17. Test the complete study from start to finish using a fresh session.
 
-## 20. Suggested source-code modules
+## 19. Suggested source-code modules
 
 ```text
 project4/
@@ -1428,7 +1219,7 @@ project4/
 
 Keep mathematical code separate from Django view code so that the preference model can be unit-tested independently from the interface.
 
-## 21. Suggested tests
+## 20. Suggested tests
 
 ### Mathematical tests
 
@@ -1449,7 +1240,7 @@ Keep mathematical code separate from Django view code so that the preference mod
 - [ ] Fresh session starts at the correct first page.
 - [ ] Study can reach the completion/debrief page.
 
-## 22. Final submission checklist
+## 21. Final submission checklist
 
 - [ ] Project 4 is linked from the shared home page.
 - [ ] Landing page has report download and start-study actions.
@@ -1468,15 +1259,10 @@ Keep mathematical code separate from Django view code so that the preference mod
 - [ ] No fabricated study results are presented as real data.
 - [ ] Source code is committed to the shared Git repository.
 
-## 23. Source documents used
+## 22. Source documents used
 
 This requirements guide was prepared from the attached course materials:
 
 - `HCAI-project_04.pdf` - official Project 4 specification.
-- `HCAI-lecture09-UserModelling.pdf` - user-model formalization, Luce models, likelihood, MLE, Bayesian uncertainty.
-- `HCAI-lecture07-UserStudies.pdf` - user-study goals, design, counterbalancing, ethics, GDPR, and analysis.
-- `HCAI-lecture08-InteractiveML.pdf` - interactive ML, user preferences, recommender systems, and content-based user profiles.
-- `HCAI-lecture06-ActiveLearning.pdf` - optional adaptive query-selection extension.
-- `HCAI-lecture12-fairness.pdf` - optional additional privacy background.
 - `HCAI-project_01.pdf`, `HCAI-project_02.pdf`, and `HCAI-project_03.pdf` - shared Django/project conventions and deliverable continuity.
 - `README.md`, `HCAI_project_02.md`, and `HCAI_project_03.md` - style and structure of the existing project documentation.
