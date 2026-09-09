@@ -13,9 +13,9 @@ For each article the system chooses to either predict (classifier) or defer
    TF-IDF features. This uses the expert's *competence*, unlike confidence-based
    rejection.
 
-2. Confidence threshold, a naïve rejection baseline:
-   defer when the classifier's top probability is below a tuned threshold. The
-    This ignores whether the expert is actually better.
+2. Confidence threshold, a naive rejection baseline: defer when the classifier's
+   top probability is below a tuned threshold. This ignores whether the expert
+   is actually better.
 
 Both are trained where expert labels are available (the Task-3 setting) and
 evaluated on the test set with the full deferral-quality metric suite plus an

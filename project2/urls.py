@@ -10,4 +10,5 @@ urlpatterns = [
     path("pdp/", views.pdp_data, name="pdp_data"),
     path("ale/", views.ale_data, name="ale_data"),
     path("report/", views.report, name="report"),
+    path("report/download/", views.report_download, name="report_download"),
 ]

@@ -986,3 +986,47 @@ class ReportViewTest(TestCase):
     def test_nav_links_to_report(self):
         response = self.client.get("/project2/dashboard/")
         self.assertContains(response, "/project2/report/")
+
+
+# ── PDF report ─────────────────────────────────────────────────────────────
+
+class ReportPdfTest(TestCase):
+    def test_report_builds_a_well_formed_pdf(self):
+        from .services.report import build_report_pdf
+        pdf = build_report_pdf()
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        self.assertGreater(len(pdf), 8_000)
+
+    def test_report_is_a_multi_page_document(self):
+        from .services.report import build_report_pdf
+        self.assertGreaterEqual(build_report_pdf().count(b"/Type /Page"), 3)
+
+    def test_report_carries_the_project_title(self):
+        from .services.report import build_report_pdf
+        self.assertIn(b"Explainability", build_report_pdf())
+
+    def test_report_uses_only_glyphs_the_built_in_fonts_have(self):
+        """WinAnsi drops Greek and maths operators silently, taking meaning with them."""
+        import re
+        from pathlib import Path
+        from . import services
+
+        safe = {"&amp;", "&lt;", "&gt;", "&quot;", "&nbsp;", "&mdash;", "&ndash;",
+                "&lsquo;", "&rsquo;", "&ldquo;", "&rdquo;", "&hellip;", "&deg;",
+                "&times;", "&sup2;", "&frac12;", "&euro;", "&dagger;", "&bull;"}
+        source = (Path(services.__file__).parent / "report.py").read_text(encoding="utf-8")
+        used = set(re.findall(r"&[a-zA-Z]+;|&#\d+;", source))
+        self.assertEqual(used - safe, set())
+
+    def test_download_serves_a_pdf_attachment(self):
+        response = self.client.get("/project2/report/download/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn("project2_report.pdf", response["Content-Disposition"])
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_landing_page_offers_the_download(self):
+        response = self.client.get("/project2/")
+        self.assertContains(response, "/project2/report/download/")
+        self.assertContains(response, "Download report")

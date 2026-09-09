@@ -1,5 +1,5 @@
 import pandas as pd
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 
 from .services.data import (
@@ -30,6 +30,15 @@ def _fmt_value(feat, val):
     if feat == "year":
         return str(int(val))
     return f"{float(val):.1f}"
+
+
+def report_download(request):
+    """Stream the PDF report."""
+    from .services.report import build_report_pdf
+
+    response = HttpResponse(build_report_pdf(), content_type="application/pdf")
+    response["Content-Disposition"] = 'attachment; filename="project2_report.pdf"'
+    return response
 
 
 def report(request):
