@@ -1,13 +1,46 @@
-# HCAI Project 1: Automated Machine Learning
+# HCAI Course Projects
 
-This repository contains the implementation of **Project 1** for the course **Human-Centric Artificial Intelligence**.
+Implementation of **all four projects** for the course **Human-Centric Artificial
+Intelligence**, as a single Django project with one app per project, in one Git
+repository.
 
-The goal of this project is to build a small Django web application that allows users to:
+| App | Project | What it does |
+|-----|---------|--------------|
+| `project1` | Automated Machine Learning | Upload a CSV, explore it, and run a full supervised-learning pipeline with control over model, split, hyperparameters and score. |
+| `project2` | Explainability | Decision tree and logistic regression on Palmer Penguins, with a λ interpretability slider, counterfactual explanations, and hand-written PDP and ALE plots. |
+| `project3` | Active Learning for Learning-to-Defer | AG News classifier that can defer to a simulated expert, with active learning to discover the expert's competence. Downloadable PDF report. |
+| `project4` | Preference Elicitation | A runnable user study comparing pairwise choice against ten-film ranking for learning a new user's taste. Downloadable PDF report. |
 
-- upload a dataset in CSV format,
-- visualize the data,
-- train supervised machine learning models,
-- evaluate model performance through an interactive interface.
+All four are reachable from the home page at `http://127.0.0.1:8000/`.
+
+## Quick start
+
+```bash
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver
+```
+
+Then open <http://127.0.0.1:8000/>.
+
+Notes:
+
+- No network access is required. All datasets ship with the repository:
+  `data/iris.csv`, `data/movie_metadata.csv` and `data/agnews.csv.gz`. Project 2
+  reads Palmer Penguins from the `palmerpenguins` package, as its sheet
+  recommends.
+- A migrated `db.sqlite3` is committed, so `runserver` alone works on a fresh
+  clone. `migrate` rebuilds it.
+- Project 3's first page load takes about 40 seconds while it trains on 120,000
+  articles. Results are cached, so later loads are immediate.
+- Dependencies: Django, numpy, pandas, scikit-learn, matplotlib, plus
+  `imbalanced-learn`, `palmerpenguins` and `reportlab`.
+
+## Running the tests
+
+```bash
+python manage.py test
+```
 
 ## General Project Guidelines
 
@@ -47,20 +80,6 @@ Update the home page so that it displays:
 - the matriculation numbers of all group members.
 
 This change must be done in **Python code**, not by hardcoding the names directly in the HTML template.
-
-## Running the Project
-
-Clone or download the provided project skeleton:
-
-```bash
-python manage.py runserver
-```
-
-Then open the application in your browser at:
-
-```text
-http://127.0.0.1:8000/
-```
 
 ## Styling
 

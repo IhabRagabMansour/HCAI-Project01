@@ -1,13 +1,12 @@
-"""AG News dataset loading and caching for Project 3 (Learning-to-Defer).
+"""AG News dataset loading for Project 3 (Learning-to-Defer).
 
-AG News is a topic-classification dataset: 120,000 training and 7,600 test news
-articles in four classes (World, Sports, Business, Sci/Tech). We load it once
-from the HuggingFace Hub (``fancyzhx/ag_news``) and cache the extracted
-(text, label) arrays to a local joblib file, so subsequent loads are instant and
-work offline.
+120,000 training and 7,600 test news articles in four classes (World, Sports,
+Business, Sci/Tech). The dataset ships as ``data/agnews.csv.gz``, so a fresh
+clone needs no network. Loaded from, in order: that file, a local joblib cache
+if an earlier run left one, then the HuggingFace Hub.
 
-The train split is used for training; the test split is used **only** for
-evaluation — never for model selection or active-learning query choice.
+The test split is used only for evaluation, never for model selection or
+active-learning query choice.
 """
 
 from __future__ import annotations
@@ -23,7 +22,9 @@ from django.conf import settings
 CLASS_NAMES = ["World", "Sports", "Business", "Sci/Tech"]
 N_CLASSES = len(CLASS_NAMES)
 
-# Where the extracted arrays are cached on disk.
+DATA_FILE = os.path.join(settings.BASE_DIR, "data", "agnews.csv.gz")
+
+# Cache left by earlier runs; still read if present.
 CACHE_DIR = os.path.join(settings.BASE_DIR, "project3", "data_cache")
 CACHE_FILE = os.path.join(CACHE_DIR, "agnews.joblib")
 
@@ -49,6 +50,21 @@ class AGNewsData:
         return len(self.class_names)
 
 
+def _load_from_csv():
+    """Read the shipped dataset."""
+    import pandas as pd
+
+    df = pd.read_csv(DATA_FILE)
+    train = df[df["split"] == "train"]
+    test = df[df["split"] == "test"]
+    return (
+        train["text"].astype(str).tolist(),
+        train["label"].to_numpy(dtype=int),
+        test["text"].astype(str).tolist(),
+        test["label"].to_numpy(dtype=int),
+    )
+
+
 def _load_from_huggingface():
     """Download AG News from the HuggingFace Hub and extract plain arrays."""
     from datasets import load_dataset
@@ -61,20 +77,30 @@ def _load_from_huggingface():
     return X_train, y_train, X_test, y_test
 
 
+def _write_csv(X_train, y_train, X_test, y_test):
+    """Persist a downloaded copy for later runs."""
+    import pandas as pd
+
+    os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
+    pd.DataFrame({
+        "split": ["train"] * len(X_train) + ["test"] * len(X_test),
+        "label": list(y_train) + list(y_test),
+        "text": list(X_train) + list(X_test),
+    }).to_csv(DATA_FILE, index=False, compression="gzip")
+
+
 def _load_raw():
-    """Return (X_train, y_train, X_test, y_test), using the disk cache if present."""
-    import joblib
+    """Return (X_train, y_train, X_test, y_test) from the first source available."""
+    if os.path.exists(DATA_FILE):
+        return _load_from_csv()
 
     if os.path.exists(CACHE_FILE):
+        import joblib
         blob = joblib.load(CACHE_FILE)
         return blob["X_train"], blob["y_train"], blob["X_test"], blob["y_test"]
 
     X_train, y_train, X_test, y_test = _load_from_huggingface()
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    joblib.dump(
-        {"X_train": X_train, "y_train": y_train, "X_test": X_test, "y_test": y_test},
-        CACHE_FILE,
-    )
+    _write_csv(X_train, y_train, X_test, y_test)
     return X_train, y_train, X_test, y_test
 
 

@@ -136,10 +136,33 @@ class BaselineServiceTest(TestCase):
         pred = pipe.predict(["The football team scored a goal to win the match."])[0]
         self.assertEqual(CLASS_NAMES[int(pred)], "Sports")
 
-    def test_preprocess_text_removes_stop_words_and_normalizes(self):
+    def test_preprocess_text_lowercases_and_removes_stop_words(self):
         cleaned = preprocess_text("The runners were running with the teams in the stadium")
-        self.assertNotIn("the", cleaned.split())
-        self.assertTrue(any(token.startswith("run") for token in cleaned.split()))
+        tokens = cleaned.split()
+        for stop_word in ("the", "were", "with", "in"):
+            self.assertNotIn(stop_word, tokens)
+        self.assertEqual(tokens, ["runners", "running", "teams", "stadium"])
+
+    def test_preprocess_text_drops_punctuation_digits_and_single_letters(self):
+        cleaned = preprocess_text("U.S. stocks fell 3.5% on Monday -- a 2nd straight day!")
+        for token in cleaned.split():
+            self.assertTrue(token.isalpha(), token)
+            self.assertGreaterEqual(len(token), 2, token)
+
+    def test_preprocess_text_keeps_two_letter_topic_markers(self):
+        """Two-letter topic markers must survive."""
+        cleaned = preprocess_text("US and EU regulators are probing AI firms")
+        for marker in ("us", "eu", "ai"):
+            self.assertIn(marker, cleaned.split())
+
+    def test_preprocess_text_needs_no_downloaded_corpora(self):
+        """Guard against depending on corpora that `pip install` does not fetch."""
+        import sys
+        self.assertNotIn("nltk", sys.modules)
+        self.assertEqual(
+            preprocess_text("Stocks rallied as investors were buying shares"),
+            "stocks rallied investors buying shares",
+        )
 
     def test_raw_articles_remain_unchanged_for_display(self):
         data = get_agnews()
@@ -401,11 +424,41 @@ class ActiveResultTest(TestCase):
         self.assertGreater(self.r["uncertainty_curve"][-1]["team_accuracy"],
                            self.r["classifier_only"])
 
-    def test_uncertainty_more_efficient_than_random_early(self):
-        # At the smallest budgets, uncertainty should be ahead of random
-        u0 = self.r["uncertainty_curve"][0]["team_accuracy"]
-        r0 = self.r["random_curve"][0]["team_accuracy"]
-        self.assertGreater(u0, r0)
+    def test_uncertainty_more_efficient_than_random_on_small_budgets(self):
+        """Budgets 10-40: after the shared warm-up, before the curves converge."""
+        pairs = list(zip(self.r["uncertainty_curve"], self.r["random_curve"]))[1:4]
+        for unc, rnd in pairs:
+            self.assertGreater(unc["team_accuracy"], rnd["team_accuracy"],
+                               f"at {unc['n_queries']} queries")
+
+    def test_strategies_are_identical_at_the_shared_warm_up(self):
+        """Same warm-up, so the curves start level and only the strategy differs."""
+        self.assertEqual(self.r["checkpoints"][0], self.r["seed_size"])
+        self.assertAlmostEqual(self.r["uncertainty_curve"][0]["team_accuracy"],
+                               self.r["random_curve"][0]["team_accuracy"], places=6)
+
+    def test_uncertainty_advantage_fades_once_labels_are_plentiful(self):
+        """With most of the pool labelled the query order stops mattering."""
+        unc = self.r["uncertainty_curve"][-1]["team_accuracy"]
+        rnd = self.r["random_curve"][-1]["team_accuracy"]
+        self.assertLess(abs(unc - rnd), 0.01)
+
+    def test_uncertainty_reaches_the_target_with_far_fewer_queries(self):
+        """The efficiency result for Task 4."""
+        unc = self.r["uncertainty_queries_to_target"]
+        rnd = self.r["random_queries_to_target"]
+        self.assertIsNotNone(unc)
+        self.assertIsNotNone(rnd)
+        self.assertLess(unc, rnd)
+
+    def test_target_accuracy_is_actually_reachable(self):
+        """A target above the reachable ceiling would measure nothing."""
+        best = max(pt["team_accuracy"] for pt in self.r["uncertainty_curve"])
+        self.assertGreater(best, self.r["target_accuracy"])
+
+    def test_both_strategies_averaged_over_the_same_number_of_runs(self):
+        """Averaging one curve but not the other would smooth only that one."""
+        self.assertGreaterEqual(self.r["n_runs"], 2)
 
     def test_uncertainty_reaches_target_no_later_than_random(self):
         u = self.r["uncertainty_queries_to_target"]

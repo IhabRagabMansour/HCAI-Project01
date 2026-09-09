@@ -17,7 +17,8 @@ Query strategies compared:
     Classifier-uncertain articles are disproportionately
     the Business/Sci-Tech cases where deferral matters, so this concentrates the
     budget on the deferral-relevant region.
-    - "random": a naive baseline, averaged over seeds.
+  - "random": baseline. Both are averaged over the same number of runs and
+    share a random warm-up set per run, so the gap reflects the strategy.
 
 The deferral rule is unchanged (Bayes-optimal: defer when
 P(expert correct | x) > max_y P(y|x)); only the expert-correctness model is
@@ -43,8 +44,16 @@ ACTIVE_FILE = os.path.join(ARTIFACT_DIR, "active.joblib")
 POOL_SIZE = 3000
 BUDGET = 500
 CHECKPOINTS = [5, 10, 20, 40, 70, 100, 150, 200, 300, 400, 500]
-N_RANDOM_RUNS = 3
-TARGET_ACCURACY = 0.94
+
+N_RUNS = 3
+
+# Random warm-up per run, matched to the first checkpoint so both strategies
+# start level there.
+SEED_SIZE = 5
+
+# Must sit below the reachable ceiling (~0.939) or the queries-to-target
+# metric reports "not reached" for both.
+TARGET_ACCURACY = 0.93
 AL_SEED = 23
 
 
@@ -82,6 +91,32 @@ def _run_curve(order, F_pool, exp_correct_pool, F_test, conf_test, clf_test, exp
     return curve
 
 
+def _seeded_uncertainty_order(perm, unc_order) -> np.ndarray:
+    """A random warm-up set, then the rest of the pool most-uncertain first.
+
+    Without a warm-up the first queries are the most ambiguous articles, which
+    can all share one expert outcome; P(expert correct | x) then has a single
+    class and collapses to deferring everything. The warm-up is the head of
+    `perm`, the permutation the random strategy uses, so both start level.
+    """
+    warm_up = perm[:SEED_SIZE]
+    seeded = set(warm_up.tolist())
+    rest = [i for i in unc_order if i not in seeded]
+    return np.concatenate([warm_up, np.asarray(rest, dtype=int)])
+
+
+def _average_curves(runs) -> list:
+    """Mean team accuracy and deferral rate at each checkpoint across runs."""
+    return [
+        {
+            "n_queries": cp,
+            "team_accuracy": float(np.mean([run[j]["team_accuracy"] for run in runs])),
+            "deferral_rate": float(np.mean([run[j]["deferral_rate"] for run in runs])),
+        }
+        for j, cp in enumerate(CHECKPOINTS)
+    ]
+
+
 def _queries_to_target(curve, target) -> int | None:
     for pt in curve:
         if pt["team_accuracy"] >= target:
@@ -115,29 +150,23 @@ def build_active() -> dict:
     clf_test = np.asarray(get_baseline_eval()["y_pred"])
     exp_test = np.asarray(get_expert_test_predictions())
 
-    # ── Uncertainty sampling: most-uncertain first (deterministic) ──
+    # ── Paired comparison: same warm-up per run, same averaging ──
     unc = _margin_uncertainty(P_pool)
     unc_order = np.argsort(-unc)
-    uncertainty_curve = _run_curve(
-        unc_order, F_pool, exp_correct_pool, F_test, conf_test, clf_test, exp_test, y_test
-    )
 
-    # ── Random baseline: average team accuracy over several shuffles ──
-    random_runs = []
-    for r in range(N_RANDOM_RUNS):
-        order = np.random.default_rng(AL_SEED + 100 + r).permutation(POOL_SIZE)
+    uncertainty_runs, random_runs = [], []
+    for r in range(N_RUNS):
+        perm = np.random.default_rng(AL_SEED + 100 + r).permutation(POOL_SIZE)
         random_runs.append(_run_curve(
-            order, F_pool, exp_correct_pool, F_test, conf_test, clf_test, exp_test, y_test
+            perm, F_pool, exp_correct_pool, F_test, conf_test, clf_test, exp_test, y_test
         ))
-    random_curve = []
-    for j, cp in enumerate(CHECKPOINTS):
-        accs = [run[j]["team_accuracy"] for run in random_runs]
-        rates = [run[j]["deferral_rate"] for run in random_runs]
-        random_curve.append({
-            "n_queries": cp,
-            "team_accuracy": float(np.mean(accs)),
-            "deferral_rate": float(np.mean(rates)),
-        })
+        uncertainty_runs.append(_run_curve(
+            _seeded_uncertainty_order(perm, unc_order),
+            F_pool, exp_correct_pool, F_test, conf_test, clf_test, exp_test, y_test
+        ))
+
+    uncertainty_curve = _average_curves(uncertainty_runs)
+    random_curve = _average_curves(random_runs)
 
     # ── Reference lines ──
     classifier_only = float((clf_test == y_test).mean())
@@ -155,7 +184,8 @@ def build_active() -> dict:
         "target_accuracy": TARGET_ACCURACY,
         "uncertainty_queries_to_target": _queries_to_target(uncertainty_curve, TARGET_ACCURACY),
         "random_queries_to_target": _queries_to_target(random_curve, TARGET_ACCURACY),
-        "n_random_runs": N_RANDOM_RUNS,
+        "n_runs": N_RUNS,
+        "seed_size": SEED_SIZE,
     }
     os.makedirs(ARTIFACT_DIR, exist_ok=True)
     joblib.dump(result, ACTIVE_FILE)

@@ -169,8 +169,10 @@ def build_report_pdf() -> bytes:
         f"From this task the expert's labels are not available during training. We "
         f"query the expert on a pool of {act['pool_size']} training examples (budget "
         f"{act['budget']}) to learn P(expert correct | x). We compare margin "
-        f"uncertainty sampling against a random baseline (averaged over "
-        f"{act['n_random_runs']} runs)."
+        f"uncertainty sampling against a random baseline. Both strategies are "
+        f"averaged over {act['n_runs']} runs and, within a run, start from the same "
+        f"random warm-up set of {act['seed_size']} queries, so the gap between them "
+        f"reflects the query strategy rather than luck in the starting labels."
     )
     rows = [["Expert queries", "Uncertainty", "Random"]]
     for u, r in zip(act["uncertainty_curve"], act["random_curve"]):

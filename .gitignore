@@ -58,10 +58,12 @@ cover/
 # Django stuff:
 *.log
 local_settings.py
-db.sqlite3
 db.sqlite3-journal
 media/*
 !media/.gitkeep
+
+# db.sqlite3 is intentionally tracked: an empty migrated database is shipped so
+# `runserver` works on a fresh clone without `migrate` first.
 
 # Project 3 cached artifacts (AG News data + trained models/results)
 project3/data_cache/

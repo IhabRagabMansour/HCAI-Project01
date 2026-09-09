@@ -19,7 +19,8 @@
         <tr><th>Query strategy</th><td>Margin uncertainty sampling vs. random baseline</td></tr>
         <tr><th>Pool size</th><td>{{ pool_size }} unlabeled training examples</td></tr>
         <tr><th>Query budget</th><td>{{ budget }} expert queries</td></tr>
-        <tr><th>Random baseline</th><td>averaged over {{ n_random_runs }} runs</td></tr>
+        <tr><th>Comparison</th><td>both strategies averaged over {{ n_runs }} runs,
+            each starting from the same random warm-up set of {{ seed_size }}</td></tr>
     </table>
     <p class="p3-hint">
         Classifier-uncertain articles are disproportionately the Business/Sci-Tech
