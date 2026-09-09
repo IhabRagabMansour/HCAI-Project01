@@ -10,7 +10,7 @@ from __future__ import annotations
 import io
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
@@ -33,38 +33,44 @@ SEED = 42
 
 def _styles():
     base = getSampleStyleSheet()
-    h1 = ParagraphStyle("H1", parent=base["Heading1"], fontSize=14, spaceBefore=10,
-                        spaceAfter=6, textColor=colors.HexColor("#275CB2"))
-    h2 = ParagraphStyle("H2", parent=base["Heading2"], fontSize=11.5, spaceBefore=9,
-                        spaceAfter=4, textColor=colors.HexColor("#1e4a9a"))
-    body = ParagraphStyle("Body", parent=base["BodyText"], fontSize=9.7, leading=13.6,
-                          alignment=TA_LEFT, spaceAfter=6)
-    formula = ParagraphStyle("Formula", parent=body, fontName="Courier", fontSize=9,
-                             leading=13, leftIndent=16, spaceBefore=3, spaceAfter=8,
-                             textColor=colors.HexColor("#1e4a9a"))
-    title = ParagraphStyle("DocTitle", parent=base["Title"], fontSize=19,
-                           textColor=colors.HexColor("#275CB2"))
-    return title, h1, h2, body, formula
+    h1 = ParagraphStyle("H1", parent=base["Heading1"], fontName="Times-Bold",
+                        fontSize=13, leading=16, spaceBefore=14, spaceAfter=5,
+                        textColor=colors.black)
+    h2 = ParagraphStyle("H2", parent=base["Heading2"], fontName="Times-Bold",
+                        fontSize=11, leading=14, spaceBefore=10, spaceAfter=3,
+                        textColor=colors.black)
+    body = ParagraphStyle("Body", parent=base["BodyText"], fontName="Times-Roman",
+                          fontSize=10.5, leading=14.5, alignment=TA_JUSTIFY,
+                          spaceAfter=7, firstLineIndent=0)
+    formula = ParagraphStyle("Formula", parent=body, fontName="Courier",
+                             fontSize=9.5, leading=13, leftIndent=22,
+                             alignment=TA_LEFT, spaceBefore=5, spaceAfter=9)
+    title = ParagraphStyle("DocTitle", parent=base["Title"], fontName="Times-Bold",
+                           fontSize=17, leading=21, spaceAfter=2,
+                           textColor=colors.black)
+    subtitle = ParagraphStyle("Subtitle", parent=body, fontName="Times-Italic",
+                              fontSize=10.5, alignment=TA_CENTER, spaceAfter=2)
+    return title, subtitle, h1, h2, body, formula
 
 
-_TH = ParagraphStyle("TH", fontName="Helvetica-Bold", fontSize=8.5, leading=11,
-                     textColor=colors.white)
-_TD = ParagraphStyle("TD", fontName="Helvetica", fontSize=8.5, leading=11)
+_TH = ParagraphStyle("TH", fontName="Times-Bold", fontSize=9.5, leading=12)
+_TD = ParagraphStyle("TD", fontName="Times-Roman", fontSize=9.5, leading=12)
 
 
 def _table(rows, col_widths=None):
+    """A plain rule-ruled table, in the style used in printed papers."""
     wrapped = [[Paragraph(str(c), _TH) for c in rows[0]]]
     wrapped += [[Paragraph(str(c), _TD) for c in row] for row in rows[1:]]
     table = Table(wrapped, colWidths=col_widths, hAlign="LEFT")
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#275CB2")),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f7fc")]),
+        ("LINEABOVE", (0, 0), (-1, 0), 0.9, colors.black),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.45, colors.black),
+        ("LINEBELOW", (0, -1), (-1, -1), 0.9, colors.black),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 3.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
     ]))
     return table
 
@@ -93,10 +99,10 @@ def build_report_pdf() -> bytes:
     doc = SimpleDocTemplate(
         buf, pagesize=A4, topMargin=1.7 * cm, bottomMargin=1.7 * cm,
         leftMargin=2 * cm, rightMargin=2 * cm,
-        title="Project 2 — Explainability",
+        title="Project 2: Explainability",
         author="Human-Centric Artificial Intelligence",
     )
-    title, h1, h2, body, formula = _styles()
+    title, subtitle, h1, h2, body, formula = _styles()
     S = []
 
     def para(text, style=body):
@@ -111,11 +117,10 @@ def build_report_pdf() -> bytes:
 
     # ── Title ───────────────────────────────────────────────────────────────
     para("Project 2: Explainability", title)
-    para(
-        "Human-Centric Artificial Intelligence &mdash; interpretability, "
-        "counterfactual explanations and global feature effects on the Palmer "
-        "Penguins dataset.", body)
-    S.append(Spacer(1, 6))
+    para("Human-Centric Artificial Intelligence", subtitle)
+    para("Interpretability, counterfactual explanations and global feature "
+         "effects on the Palmer Penguins dataset", subtitle)
+    S.append(Spacer(1, 14))
 
     # ── 1. Introduction ─────────────────────────────────────────────────────
     para("1. Introduction", h1)
@@ -166,7 +171,7 @@ def build_report_pdf() -> bytes:
         "explain a model using differently prepared data than it was trained on.")
 
     # ── 3. Task 1: the tree ─────────────────────────────────────────────────
-    para("3. Task 1 &mdash; Decision tree, accuracy and complexity", h1)
+    para("3. Task 1: the decision tree, its accuracy and its complexity", h1)
     para(
         f"We train {len(TREE_MAX_LEAF_NODES_GRID)} trees over "
         f"max_leaf_nodes in {{{_grid_text(TREE_MAX_LEAF_NODES_GRID)}}}, which "
@@ -177,7 +182,7 @@ def build_report_pdf() -> bytes:
     para("Omega(f) = number of leaves", formula)
 
     # ── 4. Task 2: the slider ───────────────────────────────────────────────
-    para("4. Task 2 &mdash; The lambda slider", h1)
+    para("4. Task 2: the lambda slider", h1)
     para("The sheet defines the model to display as the maximizer of")
     para("score = acc_test - lambda * Omega(f)", formula)
     para(
@@ -204,7 +209,7 @@ def build_report_pdf() -> bytes:
         "because it cannot separate three species however cheap it is.")
 
     # ── 5. Task 3: logistic regression ──────────────────────────────────────
-    para("5. Task 3 &mdash; Logistic regression and its complexity measure", h1)
+    para("5. Task 3: logistic regression and its complexity measure", h1)
     para(
         f"We train {len(LOGREG_C_GRID)} multinomial L1 logistic regressions over "
         f"C in {{{_grid_text(LOGREG_C_GRID)}}} (solver=saga, max_iter=5000). C is "
@@ -226,7 +231,7 @@ def build_report_pdf() -> bytes:
         "close to zero numerically without landing exactly on it.")
 
     # ── 6. Task 4: counterfactuals ──────────────────────────────────────────
-    para("6. Task 4 &mdash; Counterfactual explanations", h1)
+    para("6. Task 4: counterfactual explanations", h1)
     para(
         "The user picks a row from the dataset and a target species, and we show "
         "the closest examples we can find that the <i>currently selected</i> "
@@ -236,9 +241,9 @@ def build_report_pdf() -> bytes:
 
     para("6.1 Distance", h2)
     para(
-        "Features are on wildly different scales here &mdash; a millimetre of "
-        "bill length and a gram of body mass are not comparable &mdash; so a raw "
-        "L1 or L2 distance would be dominated by body mass. We use the "
+        "Features here sit on wildly different scales. A millimetre of bill "
+        "length and a gram of body mass are simply not comparable, so a raw "
+        "L1 or L2 distance ends up dominated by body mass. We use the "
         "MAD-weighted L1 distance from the lecture:")
     para(
         "d(x, z)  =  sum_j  |x_j - z_j| / MAD_j<br/>"
@@ -272,15 +277,15 @@ def build_report_pdf() -> bytes:
         "\"if this penguin had lived on another island\" is less actionable than "
         "one that only adjusts a measurement.")
     para(
-        "If no counterfactual is found we widen the search &mdash; more "
-        "candidates, larger numeric noise, a higher chance of switching a "
-        "category &mdash; and retry, exactly as the sheet suggests. This matters "
+        "If no counterfactual is found we widen the search (more candidates, "
+        "larger numeric noise, a higher chance of switching a category) and "
+        "retry, exactly as the sheet suggests. This matters "
         "in practice: for some rows and targets the nearby region contains "
         "nothing of the target class, and a single narrow pass would simply "
         "report failure.")
 
     # ── 7. Task 5: PDP and ALE ──────────────────────────────────────────────
-    para("7. Task 5 &mdash; Feature effects: PDP and ALE", h1)
+    para("7. Task 5: feature effects with PDP and ALE", h1)
     para(
         "The user selects one of the four biometric features and sees both a PDP "
         "and an ALE plot, each with one curve per species, computed from the "
@@ -322,8 +327,8 @@ def build_report_pdf() -> bytes:
         "The two answer different questions and disagree in an informative way. "
         "PDP averages over the <i>marginal</i> distribution of the other "
         "features, so when features are correlated it evaluates the model on "
-        "combinations that do not occur &mdash; a very long flipper paired with a "
-        "very small body mass, for instance. ALE only ever uses local differences "
+        "combinations that do not occur, such as a very long flipper paired with "
+        "a very small body mass. ALE only ever uses local differences "
         "within a bin of the <i>conditional</i> distribution, so it never asks "
         "the model about a penguin that could not exist. On this dataset the "
         "biometric features are strongly correlated, which is exactly the "
@@ -352,8 +357,8 @@ def build_report_pdf() -> bytes:
     para(
         "We use finite differences for both families. The lecture defines ALE "
         "with the derivative estimated on a grid of values in any case, and using "
-        "one estimator for both keeps the two model families directly comparable "
-        "&mdash; if we computed the tree numerically and the regression "
+        "one estimator for both keeps the two model families directly comparable. "
+        "If we computed the tree numerically and the regression "
         "analytically, any difference between their ALE curves would be partly an "
         "artefact of the two estimators rather than a real difference between "
         "the models.")

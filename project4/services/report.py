@@ -8,7 +8,7 @@ measures, planned analysis, ethics, interface, and limitations.
 Every number describing the corpus, the feature space or the elicitation budget
 is read from the live services rather than typed in, so the report cannot drift
 away from the implementation. The study has *not* been run, so the report
-contains no participant results — only the protocol that would produce them.
+contains no participant results, only the protocol that would produce them.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from __future__ import annotations
 import io
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
@@ -42,31 +42,35 @@ RECRUIT_N = 40
 
 def _styles():
     base = getSampleStyleSheet()
-    h1 = ParagraphStyle("H1", parent=base["Heading1"], fontSize=14, spaceBefore=10,
-                        spaceAfter=6, textColor=colors.HexColor("#275CB2"))
-    h2 = ParagraphStyle("H2", parent=base["Heading2"], fontSize=11.5, spaceBefore=9,
-                        spaceAfter=4, textColor=colors.HexColor("#1e4a9a"))
-    body = ParagraphStyle("Body", parent=base["BodyText"], fontSize=9.7, leading=13.6,
-                          alignment=TA_LEFT, spaceAfter=6)
+    h1 = ParagraphStyle("H1", parent=base["Heading1"], fontName="Times-Bold",
+                        fontSize=13, leading=16, spaceBefore=14, spaceAfter=5,
+                        textColor=colors.black)
+    h2 = ParagraphStyle("H2", parent=base["Heading2"], fontName="Times-Bold",
+                        fontSize=11, leading=14, spaceBefore=10, spaceAfter=3,
+                        textColor=colors.black)
+    body = ParagraphStyle("Body", parent=base["BodyText"], fontName="Times-Roman",
+                          fontSize=10.5, leading=14.5, alignment=TA_JUSTIFY,
+                          spaceAfter=7)
     # Formulas use plain-text mathematical notation for reliable PDF rendering.
     # materials. The built-in PDF fonts are WinAnsi-encoded and carry no Greek or
     # mathematical operators, so a typeset sigma or product sign would be dropped
     # silently; ASCII renders identically everywhere and cannot fail that way.
     formula = ParagraphStyle("Formula", parent=body, fontName="Courier",
-                             fontSize=9, leading=13, leftIndent=16,
-                             spaceBefore=3, spaceAfter=8,
-                             textColor=colors.HexColor("#1e4a9a"))
-    callout = ParagraphStyle("Callout", parent=body, fontName="Helvetica-Oblique",
-                             leftIndent=16, spaceBefore=3, spaceAfter=7,
-                             textColor=colors.HexColor("#333333"))
-    title = ParagraphStyle("DocTitle", parent=base["Title"], fontSize=19,
-                           textColor=colors.HexColor("#275CB2"))
-    return title, h1, h2, body, formula, callout
+                             fontSize=9.5, leading=13, leftIndent=22,
+                             alignment=TA_LEFT, spaceBefore=5, spaceAfter=9)
+    callout = ParagraphStyle("Callout", parent=body, fontName="Times-Italic",
+                             leftIndent=22, rightIndent=22, spaceBefore=4,
+                             spaceAfter=8)
+    title = ParagraphStyle("DocTitle", parent=base["Title"], fontName="Times-Bold",
+                           fontSize=17, leading=21, spaceAfter=2,
+                           textColor=colors.black)
+    subtitle = ParagraphStyle("Subtitle", parent=body, fontName="Times-Italic",
+                              fontSize=10.5, alignment=TA_CENTER, spaceAfter=2)
+    return title, subtitle, h1, h2, body, formula, callout
 
 
-_TH = ParagraphStyle("TH", fontName="Helvetica-Bold", fontSize=8.5, leading=11,
-                     textColor=colors.white)
-_TD = ParagraphStyle("TD", fontName="Helvetica", fontSize=8.5, leading=11)
+_TH = ParagraphStyle("TH", fontName="Times-Bold", fontSize=9.5, leading=12)
+_TD = ParagraphStyle("TD", fontName="Times-Roman", fontSize=9.5, leading=12)
 
 
 def _table(rows, col_widths=None):
@@ -78,14 +82,14 @@ def _table(rows, col_widths=None):
 
     table = Table(wrapped, colWidths=col_widths, hAlign="LEFT")
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#275CB2")),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f7fc")]),
+        ("LINEABOVE", (0, 0), (-1, 0), 0.9, colors.black),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.45, colors.black),
+        ("LINEBELOW", (0, -1), (-1, -1), 0.9, colors.black),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 3.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
     ]))
     return table
 
@@ -108,10 +112,10 @@ def build_report_pdf() -> bytes:
     doc = SimpleDocTemplate(
         buf, pagesize=A4, topMargin=1.7 * cm, bottomMargin=1.7 * cm,
         leftMargin=2 * cm, rightMargin=2 * cm,
-        title="Project 4 — Preference Elicitation",
+        title="Project 4: Preference Elicitation",
         author="Human-Centric Artificial Intelligence",
     )
-    title, h1, h2, body, formula, callout = _styles()
+    title, subtitle, h1, h2, body, formula, callout = _styles()
     S = []
 
     def para(text, style=body):
@@ -126,10 +130,10 @@ def build_report_pdf() -> bytes:
 
     # ── Title ────────────────────────────────────────────────────────────────
     para("Project 4: Preference Elicitation", title)
-    para(
-        "Human-Centric Artificial Intelligence &mdash; a user study comparing "
-        "pairwise choice against ten-film ranking for learning a new user's taste, "
-        "on the IMDB 5000 Movie Dataset.", body)
+    para("Human-Centric Artificial Intelligence", subtitle)
+    para("A user study comparing pairwise choice against ten-film ranking for "
+         "learning a new user's taste, on the IMDB 5000 Movie Dataset", subtitle)
+    S.append(Spacer(1, 12))
     para(
         "<i>This report describes a study design and a working implementation of "
         "the participant interface. The study has not been conducted, so no "
@@ -152,8 +156,7 @@ def build_report_pdf() -> bytes:
         "takes longer and asks more of the user's attention and working memory. "
         "Which of these buys more knowledge of the user for the effort it costs is "
         "an empirical question about people, not a question that can be settled by "
-        "analysis of the model alone &mdash; which is exactly why it needs a user "
-        "study.")
+        "analysis of the model alone. That is exactly why it needs a user study.")
     para(
         "This project takes both interfaces down to the same underlying model, so "
         "that any difference measured between them is attributable to the "
@@ -183,7 +186,7 @@ def build_report_pdf() -> bytes:
     para(
         "A film is only usable if a participant can judge it and the encoder can "
         "represent it, so we drop any row missing <b>genres</b>, <b>duration</b> or "
-        "<b>release year</b> &mdash; the three fields that carry the most weight in a "
+        "<b>release year</b>, the three fields that carry the most weight in a "
         "quick judgement and that have no sensible imputed value. Missing "
         "<b>content rating</b> and <b>country</b> are kept and recorded as "
         "<i>Other</i>, because absence there is informative and dropping the rows "
@@ -197,12 +200,12 @@ def build_report_pdf() -> bytes:
         ["Distinct genres", str(len(genres))],
         ["Release years", f"{int(df['title_year'].min())}–{int(df['title_year'].max())}"],
         ["Missing values in the retained columns", "none"],
-        ["User ratings available", "none — preferences are elicited"],
+        ["User ratings available", "none; preferences are elicited"],
     ], col_widths=[8 * cm, 8 * cm]))
     S.append(Spacer(1, 6))
 
-    # ── 3. Task 1 — Feature representation ──────────────────────────────────
-    para("3. Task 1 &mdash; Feature representation", h1)
+    # ── 3. Task 1: feature representation ──────────────────────────────────
+    para("3. Task 1: feature representation", h1)
     para(
         "The representation has to serve an unusual constraint: <b>w</b> is "
         "estimated from roughly a dozen interactions, so the dimension must stay "
@@ -244,8 +247,8 @@ def build_report_pdf() -> bytes:
         "measure how famous or well-received a film is in general, not whether "
         "<i>this</i> participant would enjoy it. Including them would let the model "
         "explain choices by popularity and score well while learning nothing about "
-        "personal taste &mdash; the model would become a popularity predictor "
-        "wearing a preference model's clothes.",
+        "personal taste. The model would become a popularity predictor wearing a "
+        "preference model's clothes.",
         "<b>Language.</b> Over ninety per cent of the corpus is English, so the "
         "feature is nearly constant and its weight would be estimated from a "
         "handful of films.",
@@ -269,8 +272,8 @@ def build_report_pdf() -> bytes:
         "<font face='Courier'>transform_movies(df, encoder)</font> applies them and "
         f"returns X with shape ({corpus.n_movies:,}, {encoder.dim}). Fitting is "
         "separated from transforming so that the encoding is reproducible and "
-        "identical for both conditions &mdash; using different representations "
-        "would confound the comparison the whole study is built to make.")
+        "identical for both conditions. Using different representations would "
+        "confound the comparison the whole study is built to make.")
 
     # ── 4. Pairwise preference model ────────────────────────────────────────
     para("4. Pairwise preference model", h1)
@@ -302,8 +305,8 @@ def build_report_pdf() -> bytes:
         "cosmetic: it prevents overconfidence from few comparisons and keeps a participant who "
         "answers consistently from producing an arbitrarily confident model.")
 
-    # ── 5. Task 2 — Ranking model ───────────────────────────────────────────
-    para("5. Task 2 &mdash; Extending Bradley&ndash;Terry to full rankings", h1)
+    # ── 5. Task 2: ranking model ───────────────────────────────────────────
+    para("5. Task 2: extending Bradley&ndash;Terry to full rankings", h1)
     para(
         "A ranking is read as <b>repeated choice from what remains</b>: name the "
         "favourite of all ten, remove it, name the favourite of the remaining nine, "
@@ -331,9 +334,9 @@ def build_report_pdf() -> bytes:
         "generalisation of the other.",
         "<b>It reuses the same score w<sup>T</sup>x</b>, so neither interface gets "
         "an advantage from a richer parameterisation.",
-        "<b>It is a proper likelihood over orderings</b> &mdash; the probabilities "
-        "of all n! permutations sum to 1 (also unit-tested, for all 24 permutations "
-        "of four items) &mdash; so w is directly estimable by the same MAP "
+        "<b>It is a proper likelihood over orderings.</b> The probabilities of all "
+        "n! permutations sum to 1, also unit-tested, for all 24 permutations of "
+        "four items, so w is directly estimable by the same MAP "
         "procedure, with the same lambda and the same optimiser.",
     ])
 
@@ -358,8 +361,8 @@ def build_report_pdf() -> bytes:
         "means the only thing that differs between the two fitted models is the "
         "data the participant produced.")
 
-    # ── 6. Task 3 — Research question and hypotheses ────────────────────────
-    para("6. Task 3 &mdash; Research question and hypotheses", h1)
+    # ── 6. Task 3: research question and hypotheses ────────────────────────
+    para("6. Task 3: research question and hypotheses", h1)
     para(
         "The study asks:")
     para(
@@ -406,9 +409,9 @@ def build_report_pdf() -> bytes:
     para(
         "Comparing an equal <i>number of tasks</i> would be meaningless, since one "
         "ranking of ten contains far more preference information than one pairwise "
-        "choice. We considered three possible comparison budgets &mdash; equal "
-        "time, equal films inspected, equal preference relations &mdash; we make "
-        "<b>equal number of distinct films inspected</b> the primary budget:")
+        "choice. Of the three possible comparison budgets (equal time, equal films "
+        "inspected, equal preference relations), we make <b>equal number of "
+        "distinct films inspected</b> the primary budget:")
     S.append(_table([
         ["", "Pairwise", "Ranking"],
         ["Tasks", str(cfg.n_pairwise_trials), str(cfg.n_ranking_trials)],
@@ -424,8 +427,8 @@ def build_report_pdf() -> bytes:
         "closest available proxy for the cognitive work being demanded, it is "
         "exactly equalisable in advance (unlike time, which cannot be fixed without "
         "rushing people), and it makes the comparison a fair test of the question "
-        "the recommender designer really faces &mdash; <i>given that I may show a "
-        "new user thirty films, how should I ask about them?</i> Elapsed time is "
+        "the recommender designer really faces: <i>given that I may show a new "
+        "user thirty films, how should I ask about them?</i> Elapsed time is "
         "measured throughout and analysed as the secondary efficiency outcome, so "
         "nothing is lost by not making it the budget.")
     para(
@@ -460,8 +463,8 @@ def build_report_pdf() -> bytes:
         "further pairwise questions on films used nowhere else. Both fitted models "
         "predict those same questions. The evaluation is in pairwise form for both "
         "conditions because both models induce a probability over any pair, which "
-        "makes one common yardstick possible; the alternative &mdash; testing each "
-        "condition in its own format &mdash; would confound interface with test. "
+        "makes one common yardstick possible. The alternative, testing each "
+        "condition in its own format, would confound interface with test. "
         "These responses are used only for evaluation and never for refitting.")
 
     # ── 8. Participants and recruitment ─────────────────────────────────────
@@ -648,13 +651,13 @@ def build_report_pdf() -> bytes:
         "Compensation is not contingent on completion.",
         "<b>Data minimisation.</b> No name, email, IP or any direct identifier is "
         "collected anywhere. The background questionnaire asks only for an age "
-        "<i>range</i>, film-watching frequency and recommender familiarity &mdash; "
-        "the three variables the analysis would actually use.",
+        "<i>range</i>, film-watching frequency and recommender familiarity, the "
+        "three variables the analysis would actually use.",
         "<b>Pseudonymisation.</b> Each session is identified by a random 12-"
         "character code with no link to a person. The code is shown to the "
         "participant at the end, because it is the only way for them to request "
-        "deletion &mdash; and precisely because we cannot otherwise find their "
-        "record, which is the point.",
+        "deletion, and precisely because we cannot otherwise find their record, "
+        "which is the point.",
         "<b>GDPR.</b> Interaction sequences can be indirect identifiers even without "
         "names, so the logs are treated as personal data: "
         "lawful basis is consent, processing is limited to the stated research "
@@ -693,7 +696,7 @@ def build_report_pdf() -> bytes:
         "a choice requires an explicit click. The server rejects any film id that "
         "was not one of the two displayed.",
         "Title, year, genres, duration, content rating, country, director and lead "
-        "actor are shown &mdash; enough for a real judgement.",
+        "actor are shown, which is enough for a real judgement.",
         "Progress shown as <i>Task n of N</i>; response time recorded client-side "
         "and range-validated server-side, since a client value can never be trusted.",
         "No model output or recommendation is ever shown during elicitation, which "
@@ -712,7 +715,7 @@ def build_report_pdf() -> bytes:
         "scripting disabled each press posts and the server performs the identical "
         "swap. The interface degrades rather than breaking.",
         "The whole order is posted back and accepted only if it is exactly a "
-        "permutation of the films sent &mdash; one check that rejects duplicates, "
+        "permutation of the films sent. That one check rejects duplicates, "
         "omissions, extras and unknown ids. A tampered order is discarded rather "
         "than stored partially correct.",
     ])
@@ -722,8 +725,8 @@ def build_report_pdf() -> bytes:
         "Four models persist the study: <font face='Courier'>StudySession</font> "
         "(participant code, condition order, seed, current step, timestamps), "
         "<font face='Courier'>PairwiseTrial</font> and "
-        "<font face='Courier'>RankingTrial</font> (both tagged with a block "
-        "&mdash; practice, main or held-out &mdash; the films shown, the response "
+        "<font face='Courier'>RankingTrial</font> (each tagged with a block, "
+        "practice, main or held-out, plus the films shown, the response "
         "and the response time), and "
         "<font face='Courier'>QuestionnaireResponse</font>. A fifth, "
         "<font face='Courier'>PreferenceModelFit</font>, stores each condition's "
@@ -753,8 +756,8 @@ def build_report_pdf() -> bytes:
         "ones, and random sampling from five thousand films makes that common.",
         "<b>Cognitive load of ranking ten.</b> Ordering ten items is genuinely "
         "demanding, and a fatigued participant may order the top few carefully and "
-        "the rest arbitrarily &mdash; which the Plackett&ndash;Luce likelihood, "
-        "weighting every position, would take at face value.",
+        "the rest arbitrarily, which the Plackett&ndash;Luce likelihood, weighting "
+        "every position, would take at face value.",
         "<b>Random sampling is sample-inefficient.</b> Many random pairs are "
         "lopsided and nearly uninformative about w.",
         "<b>Single session, single sitting.</b> Preference stability over time is "
@@ -767,8 +770,8 @@ def build_report_pdf() -> bytes:
         "directions of w. This attacks the sample-inefficiency limitation "
         "directly and would form a natural third condition.",
         "<b>Bayesian estimation of w</b> instead of MAP, giving calibrated "
-        "uncertainty rather than a point estimate &mdash; and a principled way to "
-        "know when enough has been asked, which is the real goal of elicitation.",
+        "uncertainty rather than a point estimate, and a principled way to know "
+        "when enough has been asked, which is the real goal of elicitation.",
         "<b>Position-weighted ranking likelihood</b>, discounting lower positions "
         "to reflect that people rank their favourites more carefully than their "
         "least favourites.",
