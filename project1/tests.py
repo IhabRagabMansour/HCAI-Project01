@@ -1324,6 +1324,47 @@ class PrepareExperimentOutlierTest(TestCase):
         result = prepare_experiment(df, "target", "classification", config)
         self.assertEqual(result.n_outliers_removed, 0)
 
+    def _wild_df(self, n=200, seed=0):
+        """Normal data with a sprinkling of extreme rows in both splits."""
+        rng = np.random.default_rng(seed)
+        x = rng.normal(0, 1, n)
+        x[::10] = 500.0                      # every 10th row is an outlier
+        return pd.DataFrame({"x1": x, "x2": rng.normal(0, 1, n),
+                             "target": rng.integers(0, 2, n)})
+
+    def test_outlier_removal_never_touches_the_test_set(self):
+        """Evaluation must see the same rows whether or not outliers are removed."""
+        df = self._wild_df()
+        base = prepare_experiment(df, "target", "classification",
+                                  ExperimentConfig(stratify=False))
+        filtered = prepare_experiment(df, "target", "classification",
+                                      ExperimentConfig(stratify=False, outlier_strategy="iqr"))
+        pd.testing.assert_frame_equal(base.X_test, filtered.X_test)
+        np.testing.assert_array_equal(base.y_test, filtered.y_test)
+        self.assertTrue((filtered.X_test["x1"] == 500.0).any())   # outliers stay in test
+
+    def test_outlier_removal_only_shrinks_the_training_set(self):
+        df = self._wild_df()
+        base = prepare_experiment(df, "target", "classification",
+                                  ExperimentConfig(stratify=False))
+        filtered = prepare_experiment(df, "target", "classification",
+                                      ExperimentConfig(stratify=False, outlier_strategy="iqr"))
+        self.assertEqual(filtered.n_train, base.n_train - filtered.n_outliers_removed)
+        self.assertGreater(filtered.n_outliers_removed, 0)
+        self.assertFalse((filtered.X_train["x1"] == 500.0).any())
+        self.assertEqual(len(filtered.X_train), len(filtered.y_train))
+
+    def test_outlier_thresholds_come_from_training_rows_only(self):
+        """A value extreme only relative to the test rows must not decide anything."""
+        from .services.preprocess import outlier_mask
+        df = self._wild_df()
+        split = prepare_experiment(df, "target", "classification",
+                                   ExperimentConfig(stratify=False))
+        expected = int((~outlier_mask(split.X_train, "iqr")).sum())
+        filtered = prepare_experiment(df, "target", "classification",
+                                      ExperimentConfig(stratify=False, outlier_strategy="iqr"))
+        self.assertEqual(filtered.n_outliers_removed, expected)
+
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 class OutlierViewIntegrationTest(TestCase):

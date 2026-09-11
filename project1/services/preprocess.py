@@ -151,26 +151,23 @@ def scale_features(
 
 # ── Step 6: outlier removal ──────────────────────────────────────────────────
 
-def remove_outliers(X: pd.DataFrame, y: pd.Series, strategy: str):
-    """Drop rows whose numeric values fall outside a configurable range.
+def outlier_mask(X: pd.DataFrame, strategy: str) -> pd.Series:
+    """True for rows to keep. Thresholds are computed from `X` itself.
 
-    Returns (X_filtered, y_filtered, n_removed). NaN cells are kept (left to
-    the missing-value strategy). Zero-variance columns are skipped (no z-score
-    or IQR can be defined). Categorical columns are ignored.
+    NaN cells are kept (left to the missing-value strategy). Zero-variance
+    columns are skipped (no z-score or IQR can be defined). Categorical columns
+    are ignored.
 
     Strategies:
-      - "none"   → no-op
+      - "none"   → keep everything
       - "iqr"    → Tukey fences: outside [Q1 − 1.5·IQR, Q3 + 1.5·IQR]
       - "zscore" → |z| > 3 in any numeric column
     """
+    mask = pd.Series(True, index=X.index)
     if strategy == "none":
-        return X, y, 0
+        return mask
 
     numeric_cols = [c for c in X.columns if pd.api.types.is_numeric_dtype(X[c])]
-    if not numeric_cols:
-        return X, y, 0
-
-    mask = pd.Series(True, index=X.index)
 
     if strategy == "iqr":
         for col in numeric_cols:
@@ -195,10 +192,16 @@ def remove_outliers(X: pd.DataFrame, y: pd.Series, strategy: str):
     else:
         raise ValueError(f"Unknown outlier strategy: {strategy!r}")
 
+    return mask
+
+
+def remove_outliers(X: pd.DataFrame, y: pd.Series, strategy: str):
+    """Drop outlier rows from X and y. Returns (X_filtered, y_filtered, n_removed)."""
+    mask = outlier_mask(X, strategy)
     n_removed = int((~mask).sum())
-    X_filt = X[mask].reset_index(drop=True)
-    y_filt = y[mask].reset_index(drop=True)
-    return X_filt, y_filt, n_removed
+    if n_removed == 0:
+        return X, y, 0
+    return X[mask].reset_index(drop=True), y[mask].reset_index(drop=True), n_removed
 
 
 # ── Orchestrator ─────────────────────────────────────────────────────────────
@@ -234,13 +237,6 @@ def prepare_experiment(
     n_features_before = X.shape[1]
     if n_features_before == 0:
         raise ValueError("No feature columns remain after exclusion.")
-
-    # 0.5 — Outlier removal (before any other row-dropping)
-    n_outliers_removed = 0
-    if getattr(config, "outlier_strategy", "none") != "none":
-        X, y, n_outliers_removed = remove_outliers(X, y, config.outlier_strategy)
-        if X.empty:
-            raise ValueError("All rows were classified as outliers — relax the strategy.")
 
     # 1 — "drop" missing strategy is applied upstream of the pipeline because
     #     SimpleImputer can't drop rows. Other strategies happen inside the
@@ -287,6 +283,19 @@ def prepare_experiment(
 
     X_train = X_train.reset_index(drop=True)
     X_test = X_test.reset_index(drop=True)
+
+    # 5.5 — Outlier removal on the training set only. The thresholds come from
+    #       the training rows and the test set is never filtered: a deployed
+    #       model cannot drop awkward inputs, so neither may its evaluation.
+    n_outliers_removed = 0
+    outlier_strategy = getattr(config, "outlier_strategy", "none")
+    if outlier_strategy != "none":
+        keep = outlier_mask(X_train, outlier_strategy).to_numpy()
+        n_outliers_removed = int((~keep).sum())
+        if not keep.any():
+            raise ValueError("All training rows were classified as outliers; relax the strategy.")
+        X_train = X_train[keep].reset_index(drop=True)
+        y_train = np.asarray(y_train)[keep]
 
     # 6 — Build un-fit preprocessing pipeline. To populate feature_names and
     #     n_features_after for the Experiment summary UI, fit a CLONE on X_train

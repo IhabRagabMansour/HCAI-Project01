@@ -72,11 +72,12 @@
             <label class="p1-label" for="{{ form.outlier_strategy.id_for_label }}">Outlier removal</label>
             {{ form.outlier_strategy }}
             <p class="p1-hint">
-                Drop rows whose numeric values fall outside a configurable range.
-                Applied <em>before</em> the train/test split, so both sides stay clean.<br>
-                <strong>IQR</strong> — Tukey fences: outside [Q1 − 1.5·IQR, Q3 + 1.5·IQR]. Robust default.<br>
-                <strong>Z-score</strong> — drop rows where any numeric column has |z| &gt; 3. Assumes roughly normal data.<br>
-                <strong>None</strong> — keep every row.
+                Drop training rows whose numeric values fall outside a range computed
+                from the training data. The test set is never filtered, so the test
+                score reflects every kind of input the model would really see.<br>
+                <strong>IQR:</strong> Tukey fences, outside [Q1 − 1.5·IQR, Q3 + 1.5·IQR]. Robust default.<br>
+                <strong>Z-score:</strong> drop rows where any numeric column has |z| &gt; 3. Assumes roughly normal data.<br>
+                <strong>None:</strong> keep every row.
             </p>
         </div>
 

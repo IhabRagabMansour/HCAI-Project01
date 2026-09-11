@@ -129,9 +129,10 @@
             <td>
                 {{ experiment.get_outlier_strategy_display }}
                 {% if experiment.n_outliers_removed %}
-                    — <strong>{{ experiment.n_outliers_removed }}</strong> row{{ experiment.n_outliers_removed|pluralize }} dropped
+                    : <strong>{{ experiment.n_outliers_removed }}</strong> training
+                    row{{ experiment.n_outliers_removed|pluralize }} dropped (the test set is left untouched)
                 {% else %}
-                    — no outliers detected
+                    : no outliers found in the training set
                 {% endif %}
             </td>
         </tr>
