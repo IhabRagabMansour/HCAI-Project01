@@ -739,6 +739,31 @@ def build_report_pdf() -> bytes:
         "the data. Anonymised logs can be exported as CSV at session and trial "
         "level for analysis.")
 
+    para("13.5 Checking the analysis before anyone takes part", h2)
+    para(
+        "Since no participant has taken part, we checked the analysis pipeline with "
+        "simulated respondents instead. Each one is given a hidden preference "
+        "vector w and answers every task in the real study plan the way our models "
+        "assume a person does: pairwise choices drawn from the "
+        "Bradley&ndash;Terry probabilities, and rankings drawn from the "
+        "Plackett&ndash;Luce model. Their answers are stored in the same database "
+        "tables as a real participant's and fitted by the same code. For every "
+        "simulated respondent the fitted w pointed in the same direction as the "
+        "hidden one, and both methods predicted the held-out choices better than "
+        "chance. A swapped chosen and rejected film, or a ranking read in reverse, "
+        "anywhere between storing an answer and fitting the model would have pushed "
+        "those predictions below chance instead. The check is part of the project's "
+        "test suite, so it runs every time the tests do.")
+    para(
+        f"This tests the software and the reasoning behind H1, not the hypothesis "
+        f"itself. In line with the extra relations a ranking carries, the ranking "
+        f"model recovered the hidden preferences more closely than the pairwise one "
+        f"at the same {movies_pairwise}-film budget. But these respondents behave "
+        f"exactly as the models assume: they never tire, and they order the bottom "
+        f"of a list as carefully as the top. Whether ranking keeps its advantage "
+        f"once real people rank under that load is precisely the question the study "
+        f"is designed to answer.")
+
     # ── 14. Limitations and extensions ──────────────────────────────────────
     para("14. Limitations and extensions", h1)
     para("<b>Limitations of the design.</b>")

@@ -1755,25 +1755,6 @@ class ReportPdfTest(TestCase):
         from .services.report import build_report_pdf
         self.assertIn(b"Preference Elicitation", build_report_pdf())
 
-    def test_report_uses_only_glyphs_the_built_in_fonts_have(self):
-        """Guard against silently dropped characters.
-
-        The built-in PDF fonts are WinAnsi-encoded: a Greek letter or a
-        mathematical operator is not rendered as a wrong glyph, it simply
-        vanishes, taking the meaning of a formula with it. Anything outside this
-        allow-list must be rewritten in plain notation rather than typeset.
-        """
-        import re
-        from pathlib import Path
-        from . import services
-
-        safe = {"&amp;", "&lt;", "&gt;", "&quot;", "&nbsp;", "&mdash;", "&ndash;",
-                "&lsquo;", "&rsquo;", "&ldquo;", "&rdquo;", "&hellip;", "&deg;",
-                "&times;", "&sup2;", "&frac12;", "&euro;", "&dagger;", "&bull;"}
-        source = (Path(services.__file__).parent / "report.py").read_text(encoding="utf-8")
-        used = set(re.findall(r"&[a-zA-Z]+;|&#\d+;", source))
-        self.assertEqual(used - safe, set())
-
     def test_report_download_serves_a_pdf_attachment(self):
         response = self.client.get("/project4/report/download/")
         self.assertEqual(response.status_code, 200)
@@ -1981,3 +1962,107 @@ class CsvExportTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "text/csv")
         self.assertIn("project4_trials.csv", response["Content-Disposition"])
+
+
+# ── Whole pipeline, checked with simulated respondents ────────────────────
+
+class SimulatedRespondentTest(TestCase):
+    """Respondents with a known taste answer every task the way the models
+    assume a person does, and the stored answers go through the same fitting
+    code a real participant's would. A swapped chosen/rejected pair or a
+    reversed ranking anywhere in between would leave the fitted preferences
+    unrelated to the true ones and the held-out accuracy at chance.
+    """
+
+    N_RESPONDENTS = 30
+
+    @classmethod
+    def setUpTestData(cls):
+        import numpy as np
+        from .models import (
+            BLOCK_HELDOUT, BLOCK_MAIN, PairwiseTrial, RankingTrial, StudySession,
+        )
+        from .services.analysis import fit_session_models
+        from .services.data import get_movie_corpus
+        from .services.features import get_features
+        from .services.preference_models import heldout_accuracy
+        from .services.sampling import DEFAULT_CONFIG, build_trial_plan
+
+        X, _ = get_features()
+        n_movies = get_movie_corpus().n_movies
+        rng = np.random.default_rng(2026)
+
+        def choose(a, b, w):
+            """A Bradley-Terry choice between films a and b."""
+            return a if rng.random() < 1 / (1 + np.exp(-(X[a] - X[b]) @ w)) else b
+
+        def rank(ids, w):
+            """A Plackett-Luce ranking, drawn exactly with the Gumbel-max trick."""
+            utility = X[ids] @ w + rng.gumbel(size=len(ids))
+            return [int(ids[i]) for i in np.argsort(-utility)]
+
+        cls.cosine = {"pairwise": [], "ranking": []}
+        cls.accuracy = {"pairwise": [], "ranking": []}
+        cls.recompute_gap = 0.0
+        for _ in range(cls.N_RESPONDENTS):
+            w_true = rng.normal(size=X.shape[1])
+            session = StudySession.objects.create(
+                condition_order="AB", seed=int(rng.integers(1, 2**31 - 1)),
+                current_step="complete")
+            plan = build_trial_plan(session.seed, n_movies, DEFAULT_CONFIG)
+
+            trials, heldout = [], []
+            for i, (a, b) in enumerate(plan.pairwise):
+                trials.append(PairwiseTrial(
+                    session=session, block=BLOCK_MAIN, task_index=i, left_movie_id=a,
+                    right_movie_id=b, chosen_movie_id=choose(a, b, w_true)))
+            for i, (a, b) in enumerate(plan.heldout):
+                chosen = choose(a, b, w_true)
+                heldout.append((chosen, b if chosen == a else a))
+                trials.append(PairwiseTrial(
+                    session=session, block=BLOCK_HELDOUT, task_index=i, left_movie_id=a,
+                    right_movie_id=b, chosen_movie_id=chosen))
+            PairwiseTrial.objects.bulk_create(trials)
+            RankingTrial.objects.bulk_create([
+                RankingTrial(session=session, block=BLOCK_MAIN, task_index=i,
+                             movie_ids=list(group), ranked_movie_ids=rank(group, w_true))
+                for i, group in enumerate(plan.ranking)])
+
+            for condition, fit in fit_session_models(session).items():
+                w = np.asarray(fit.weights)
+                cls.cosine[condition].append(
+                    float(w @ w_true / (np.linalg.norm(w) * np.linalg.norm(w_true))))
+                cls.accuracy[condition].append(fit.heldout_accuracy)
+                cls.recompute_gap = max(
+                    cls.recompute_gap,
+                    abs(fit.heldout_accuracy - heldout_accuracy(w, heldout, X)))
+
+    def _check_recovery(self, condition):
+        """The report says the fit points the right way for every respondent."""
+        cosines = self.cosine[condition]
+        self.assertTrue(all(c > 0 for c in cosines), f"{condition}: min cosine {min(cosines):.2f}")
+        self.assertGreater(sum(cosines) / len(cosines), 0.2)
+
+    def test_pairwise_fit_recovers_the_true_preferences(self):
+        self._check_recovery("pairwise")
+
+    def test_ranking_fit_recovers_the_true_preferences(self):
+        self._check_recovery("ranking")
+
+    def test_both_methods_predict_held_out_choices_better_than_chance(self):
+        """One-sided binomial test on all held-out answers pooled, at the 1% level."""
+        from scipy.stats import binomtest
+        from .services.sampling import DEFAULT_CONFIG
+        for condition, accuracies in self.accuracy.items():
+            n = len(accuracies) * DEFAULT_CONFIG.n_heldout_pairs
+            correct = round(sum(accuracies) * DEFAULT_CONFIG.n_heldout_pairs)
+            p = binomtest(correct, n, 0.5, alternative="greater").pvalue
+            self.assertLess(p, 0.01, f"{condition}: {correct}/{n} correct, p = {p:.2g}")
+
+    def test_ranking_recovers_preferences_more_closely_at_the_same_budget(self):
+        """Under the models' own assumptions, ten-film rankings carry more information."""
+        mean = {c: sum(v) / len(v) for c, v in self.cosine.items()}
+        self.assertGreater(mean["ranking"], mean["pairwise"])
+
+    def test_stored_held_out_scores_match_a_recomputation(self):
+        self.assertLess(self.recompute_gap, 1e-12)

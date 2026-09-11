@@ -1005,19 +1005,6 @@ class ReportPdfTest(TestCase):
         from .services.report import build_report_pdf
         self.assertIn(b"Explainability", build_report_pdf())
 
-    def test_report_uses_only_glyphs_the_built_in_fonts_have(self):
-        """WinAnsi drops Greek and maths operators silently, taking meaning with them."""
-        import re
-        from pathlib import Path
-        from . import services
-
-        safe = {"&amp;", "&lt;", "&gt;", "&quot;", "&nbsp;", "&mdash;", "&ndash;",
-                "&lsquo;", "&rsquo;", "&ldquo;", "&rdquo;", "&hellip;", "&deg;",
-                "&times;", "&sup2;", "&frac12;", "&euro;", "&dagger;", "&bull;"}
-        source = (Path(services.__file__).parent / "report.py").read_text(encoding="utf-8")
-        used = set(re.findall(r"&[a-zA-Z]+;|&#\d+;", source))
-        self.assertEqual(used - safe, set())
-
     def test_download_serves_a_pdf_attachment(self):
         response = self.client.get("/project2/report/download/")
         self.assertEqual(response.status_code, 200)

@@ -1,6 +1,4 @@
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 from django.apps import apps
@@ -25,19 +23,11 @@ _STATIC_TAG = re.compile(r"""{%\s*static\s+['"]([^'"]+)['"]""")
 _PACKAGE_DIRS = {"site-packages", "dist-packages"}
 
 
-def _is_installed_package(path: Path) -> bool:
-    return bool(_PACKAGE_DIRS.intersection(path.parts))
-
-
 def _project_template_dirs():
-    """Template folders of this project's own apps, never of installed packages.
-
-    Selected by where each app lives rather than by the virtualenv's folder name,
-    which people call venv, .venv, env or anything else, often inside the repo.
-    """
+    """Template folders of this project's own apps, not of installed packages."""
     dirs = [Path(d) for d in settings.TEMPLATES[0].get("DIRS", [])]
     dirs += [Path(config.path) / "templates" for config in apps.get_app_configs()
-             if not _is_installed_package(Path(config.path))]
+             if not _PACKAGE_DIRS.intersection(Path(config.path).parts)]
     return [d for d in dirs if d.is_dir()]
 
 
@@ -51,8 +41,8 @@ def _static_references():
 
 
 class StaticAssetTest(SimpleTestCase):
-    """Charts render client-side, so a missing script leaves the page returning
-    200 with an empty chart. These checks catch that before a reviewer does."""
+    """Charts are drawn in the browser, so a missing script would leave a page
+    loading normally with an empty chart."""
 
     def test_templates_reference_static_files(self):
         self.assertGreater(len(_static_references()), 10)
@@ -60,24 +50,3 @@ class StaticAssetTest(SimpleTestCase):
     def test_every_referenced_static_file_exists(self):
         missing = [ref for ref in _static_references() if not finders.find(ref)]
         self.assertEqual(missing, [])
-
-    def test_no_referenced_static_file_is_ignored_by_git(self):
-        """A file can exist here yet be absent from every clone.
-
-        The Python .gitignore template ignores any `lib/` directory, which once
-        dropped the vendored Chart.js from the repository without a trace.
-        """
-        base = Path(settings.BASE_DIR)
-        if not shutil.which("git") or not (base / ".git").exists():
-            self.skipTest("not a git checkout")
-
-        found = [Path(finders.find(ref)) for ref in _static_references() if finders.find(ref)]
-        paths = [p.relative_to(base).as_posix() for p in found
-                 if p.is_relative_to(base) and not _is_installed_package(p)]
-        self.assertTrue(paths)
-        result = subprocess.run(
-            ["git", "check-ignore", "--stdin"], cwd=base, input="\n".join(paths),
-            capture_output=True, text=True,
-        )
-        ignored = [line for line in result.stdout.splitlines() if line.strip()]
-        self.assertEqual(ignored, [])

@@ -282,15 +282,84 @@ def build_report_pdf() -> bytes:
         f"particular expert is strong. Useful deferrals outnumber harmful ones by "
         f"more than three to one, and only {_pct(adv['deferral_rate'])} of articles "
         f"are handed over, which matters because a real expert's time is the scarce "
-        f"resource. The oracle bound of {_pct(adv['oracle_accuracy'])}, which defers "
-        f"perfectly, shows how much room a better competence model would still "
-        f"have.", body)
+        f"resource. The oracle bound of {_pct(adv['oracle_accuracy'])} defers "
+        f"perfectly because it knows in advance who is right; sections 5.4 and 5.5 "
+        f"look at where our deferrals go and at what separates us from it.", body)
     para(
         "Our implementation also exposes a query cost, a margin the expert "
         "advantage must exceed before we defer. We leave it at zero here because "
         "nothing in this task charges for expert time, but it is the lever to turn "
         "if it did: raising it trades a little team accuracy for fewer "
         "interruptions.", body)
+
+    b = dfr["breakdown"]
+    ins, out = b["inside"], b["outside"]
+    miss, harm = b["missed"], b["harmful"]
+
+    def points(n):
+        return f"{n / b['n_test'] * 100:.2f}"
+
+    para("5.4 Where the deferrals go", h2)
+    para(
+        "Splitting the deferred articles by their true topic shows two very "
+        "different groups.", body)
+    S.append(_metric_table([
+        ["Deferred articles", "Articles", "Expert right", "Classifier would be right",
+         "Net correct answers"],
+        ["True topic Business or Sci/Tech (the expert's region)", str(ins["n"]),
+         _pct(ins["expert_right"]), _pct(ins["classifier_right"]), f"{ins['net']:+d}"],
+        ["True topic World or Sports", str(out["n"]),
+         _pct(out["expert_right"]), _pct(out["classifier_right"]), f"{out['net']:+d}"],
+    ], col_widths=[5.6 * cm, 1.8 * cm, 2.2 * cm, 3.2 * cm, 2.9 * cm]))
+    para(
+        f"Inside the expert's region the rule does exactly what it should. Outside "
+        f"it, the rule hands over {out['n']} articles on which the expert is weaker "
+        f"than the classifier, and loses {abs(out['net'])} correct answers doing so. "
+        f"These are genuinely ambiguous articles: the classifier's median "
+        f"confidence on them is only {out['median_confidence']:.2f}. Their wording "
+        f"resembles Business or Sci/Tech, so the competence model, which sees "
+        f"nothing but the text, rates the expert at a median of "
+        f"{out['median_competence']:.2f} on them, when the expert is really right "
+        f"{_pct(out['expert_right'])} of the time. The expert's skill depends on an "
+        f"article's true topic, and on these articles the text is exactly what "
+        f"hides it. Next to the {ins['net']:+d} gained inside the region this is a "
+        f"small cost, but it is a real limit of learning an expert's competence "
+        f"from the same text the classifier reads.", body)
+
+    para("5.5 What separates the team from the oracle", h2)
+    para(
+        f"The oracle defers exactly when the expert is right and the classifier "
+        f"wrong, so we can fall short of it in only two ways. Between them they "
+        f"account for the whole gap of {b['gap_articles']} articles, or "
+        f"{points(b['gap_articles'])} points of accuracy.", body)
+    S.append(_metric_table([
+        ["Where the team falls short of the oracle", "Articles", "Points of accuracy"],
+        ["Missed: kept, although only the expert was right", str(miss["n"]),
+         points(miss["n"])],
+        ["Harmful: deferred, although the classifier was right", str(harm["n"]),
+         points(harm["n"])],
+    ], col_widths=[8.6 * cm, 2.2 * cm, 3.2 * cm]))
+    para(
+        f"Harmful deferrals are mostly the case from 5.4: {harm['outside_region']} of "
+        f"the {harm['n']} lie outside the expert's region. The larger part of the "
+        f"gap is missed deferrals, and their cause is different. On those "
+        f"{miss['n']} articles the classifier was wrong but confident, with a median "
+        f"confidence of {miss['median_confidence']:.2f} and "
+        f"{miss['share_confident']:.0%} of them above 0.9. That confidence is "
+        f"honest. The classifier's expected calibration error, the average gap "
+        f"between how sure it is and how often it is right, is only "
+        f"{b['classifier_ece']:.4f}, so when it says 95% it is right about 95% of "
+        f"the time. Of the {b['confident_n']:,} articles it rates above 0.9, "
+        f"{b['confident_wrong']} are wrong, and nothing in its confidence says "
+        f"which. On each of them, keeping the article was the better bet given what "
+        f"the system could know; the oracle defers them only because it knows the "
+        f"answer in advance.", body)
+    para(
+        "So the deferral rule itself is not what limits us: it makes the right "
+        "choice for the estimates it is given. Closing more of the gap would take "
+        "better estimates, from a stronger classifier or a sharper competence "
+        "model, and an oracle that knows every outcome ahead of time is a bound "
+        "for reference rather than a target a real system can reach.", body)
 
     # 6. Active learning
     para("6. Active Learning Method", h1)
@@ -390,10 +459,14 @@ def build_report_pdf() -> bytes:
         "to predict from the article text, and we would expect the learned "
         "competence model to be correspondingly weaker.", body)
     para(
-        f"The distance to the oracle is still large: {_pct(adv['oracle_accuracy'])} "
-        f"against our {_pct(adv['team_accuracy'])}. Most of that gap is the limit "
-        f"of predicting expert correctness from text alone, not a tuning problem.",
-        body)
+        f"The distance to the oracle, {_pct(adv['oracle_accuracy'])} against our "
+        f"{_pct(adv['team_accuracy'])}, is not mainly a flaw in the deferral rule. "
+        f"Section 5.5 shows that {miss['n'] / b['gap_articles']:.0%} of it comes "
+        f"from articles the classifier gets confidently wrong, which no rule working "
+        f"from its well-calibrated confidence can single out, and much of the rest "
+        f"from ambiguous articles whose text misleads the competence model about "
+        f"their topic. Both would shrink with better estimates; neither is a "
+        f"tuning problem.", body)
     para(
         "The classifier is a linear bag-of-bigrams model. A transformer would "
         "likely raise the baseline and, by changing which articles are hard, would "

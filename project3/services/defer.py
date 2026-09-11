@@ -40,7 +40,7 @@ from sklearn.linear_model import LogisticRegression
 
 from .baseline import get_baseline, get_baseline_eval
 from .data import CLASS_NAMES, get_agnews
-from .expert import get_expert_test_predictions, get_expert_train_predictions
+from .expert import COMPETENCE_IDS, get_expert_test_predictions, get_expert_train_predictions
 
 ARTIFACT_DIR = os.path.join(settings.BASE_DIR, "project3", "artifacts")
 DEFER_FILE = os.path.join(ARTIFACT_DIR, "defer.joblib")
@@ -78,6 +78,63 @@ def deferral_metrics(y_true, clf_pred, exp_pred, defer_mask) -> dict:
         "oracle_accuracy": float((clf_correct | exp_correct).mean()),
         "n_deferred": n_defer,
         "n_kept": n_keep,
+    }
+
+
+def expected_calibration_error(confidence, correct, n_bins: int = 10) -> float:
+    """Mean |confidence - accuracy| over equal-width confidence bins, weighted by size."""
+    confidence = np.asarray(confidence, dtype=float)
+    correct = np.asarray(correct, dtype=bool)
+    bins = np.minimum((confidence * n_bins).astype(int), n_bins - 1)
+    ece = 0.0
+    for b in range(n_bins):
+        in_bin = bins == b
+        if in_bin.any():
+            ece += in_bin.mean() * abs(confidence[in_bin].mean() - correct[in_bin].mean())
+    return float(ece)
+
+
+def decision_breakdown(y_true, clf_pred, exp_pred, defer_mask, confidence, p_exp_correct) -> dict:
+    """Where the deferrals go, and what separates the team from the oracle.
+
+    The oracle defers exactly when only the expert is right, so the team falls
+    short of it on two kinds of article: deferred although the classifier was
+    right (harmful), and kept although only the expert was right (missed).
+    Together they make up the whole gap.
+    """
+    y_true = np.asarray(y_true)
+    defer = np.asarray(defer_mask, dtype=bool)
+    clf_ok = np.asarray(clf_pred) == y_true
+    exp_ok = np.asarray(exp_pred) == y_true
+    conf = np.asarray(confidence, dtype=float)
+    p_exp = np.asarray(p_exp_correct, dtype=float)
+    region = np.isin(y_true, list(COMPETENCE_IDS))
+
+    def summary(mask):
+        some = bool(mask.any())
+        return {
+            "n": int(mask.sum()),
+            "expert_right": float(exp_ok[mask].mean()) if some else 0.0,
+            "classifier_right": float(clf_ok[mask].mean()) if some else 0.0,
+            "net": int(exp_ok[mask].sum()) - int(clf_ok[mask].sum()),
+            "median_confidence": float(np.median(conf[mask])) if some else 0.0,
+            "median_competence": float(np.median(p_exp[mask])) if some else 0.0,
+        }
+
+    harmful = defer & clf_ok & ~exp_ok
+    missed = ~defer & ~clf_ok & exp_ok
+    confident = conf >= 0.9
+    return {
+        "n_test": int(len(y_true)),
+        "inside": summary(defer & region),
+        "outside": summary(defer & ~region),
+        "harmful": {**summary(harmful), "outside_region": int((harmful & ~region).sum())},
+        "missed": {**summary(missed), "inside_region": int((missed & region).sum()),
+                   "share_confident": float(confident[missed].mean()) if missed.any() else 0.0},
+        "gap_articles": int(harmful.sum() + missed.sum()),
+        "classifier_ece": expected_calibration_error(conf, clf_ok),
+        "confident_n": int(confident.sum()),
+        "confident_wrong": int((confident & ~clf_ok).sum()),
     }
 
 
@@ -163,6 +220,8 @@ def build_deferral() -> dict:
         "query_cost": QUERY_COST,
         "deferred_examples": _examples(defer_adv, True),
         "kept_examples": _examples(defer_adv, False),
+        "breakdown": decision_breakdown(
+            y_test, clf_pred_test, exp_pred_test, defer_adv, p_clf_conf, p_exp_correct),
     }
     os.makedirs(ARTIFACT_DIR, exist_ok=True)
     joblib.dump(result, DEFER_FILE)
@@ -173,5 +232,7 @@ def build_deferral() -> dict:
 def get_deferral() -> dict:
     import joblib
     if os.path.exists(DEFER_FILE):
-        return joblib.load(DEFER_FILE)
+        cached = joblib.load(DEFER_FILE)
+        if "breakdown" in cached:        # caches from before the breakdown are rebuilt
+            return cached
     return build_deferral()

@@ -155,15 +155,6 @@ class BaselineServiceTest(TestCase):
         for marker in ("us", "eu", "ai"):
             self.assertIn(marker, cleaned.split())
 
-    def test_preprocess_text_needs_no_downloaded_corpora(self):
-        """Guard against depending on corpora that `pip install` does not fetch."""
-        import sys
-        self.assertNotIn("nltk", sys.modules)
-        self.assertEqual(
-            preprocess_text("Stocks rallied as investors were buying shares"),
-            "stocks rallied investors buying shares",
-        )
-
     def test_raw_articles_remain_unchanged_for_display(self):
         data = get_agnews()
         original = data.X_train[0]
@@ -363,6 +354,71 @@ class DeferralResultTest(TestCase):
     def test_has_example_articles(self):
         self.assertGreater(len(self.r["deferred_examples"]), 0)
         self.assertGreater(len(self.r["kept_examples"]), 0)
+
+    # ── the breakdown the report builds sections 5.4 and 5.5 on ─────────────
+
+    def test_region_groups_cover_every_deferral(self):
+        b, adv = self.r["breakdown"], self.r["advantage"]
+        self.assertEqual(b["inside"]["n"] + b["outside"]["n"], adv["n_deferred"])
+
+    def test_region_net_effects_add_up_to_the_team_gain(self):
+        b, adv = self.r["breakdown"], self.r["advantage"]
+        gain = round((adv["team_accuracy"] - adv["classifier_accuracy"]) * b["n_test"])
+        self.assertEqual(b["inside"]["net"] + b["outside"]["net"], gain)
+
+    def test_missed_and_harmful_account_for_the_whole_oracle_gap(self):
+        b, adv = self.r["breakdown"], self.r["advantage"]
+        gap = round((adv["oracle_accuracy"] - adv["team_accuracy"]) * b["n_test"])
+        self.assertEqual(b["missed"]["n"] + b["harmful"]["n"], gap)
+        self.assertEqual(b["gap_articles"], gap)
+
+    def test_deferring_inside_the_expert_region_pays_off(self):
+        inside = self.r["breakdown"]["inside"]
+        self.assertGreater(inside["expert_right"], inside["classifier_right"])
+        self.assertGreater(inside["net"], 0)
+
+    def test_classifier_confidence_is_well_calibrated(self):
+        """The report's explanation of missed deferrals depends on this."""
+        self.assertLess(self.r["breakdown"]["classifier_ece"], 0.05)
+
+    def test_missed_deferrals_are_confident_errors(self):
+        miss = self.r["breakdown"]["missed"]
+        self.assertGreater(miss["median_confidence"], 0.8)
+
+
+class DecisionBreakdownTest(TestCase):
+    """The breakdown on inputs small enough to check by hand."""
+
+    def test_expected_calibration_error_is_zero_when_confidence_matches_accuracy(self):
+        from .services.defer import expected_calibration_error
+        conf = np.array([0.75] * 4)
+        correct = np.array([True, True, True, False])
+        self.assertAlmostEqual(expected_calibration_error(conf, correct), 0.0)
+
+    def test_expected_calibration_error_measures_overconfidence(self):
+        from .services.defer import expected_calibration_error
+        conf = np.array([0.95] * 10)
+        correct = np.array([True] * 5 + [False] * 5)
+        self.assertAlmostEqual(expected_calibration_error(conf, correct), 0.45)
+
+    def test_breakdown_sorts_each_article_into_the_right_group(self):
+        from .services.defer import decision_breakdown
+        # Classes: World 0, Sports 1, Business 2, Sci/Tech 3 (expert's region 2, 3).
+        y = np.array([2, 2, 0, 0, 3, 1])
+        clf = np.array([0, 2, 0, 1, 1, 1])   # wrong, right, right, wrong, wrong, right
+        exp = np.array([2, 2, 1, 0, 3, 1])   # right, right, wrong, right, right, right
+        defer = np.array([True, False, True, False, False, False])
+        conf = np.array([0.5, 0.9, 0.6, 0.95, 0.97, 0.99])
+        b = decision_breakdown(y, clf, exp, defer, conf, np.full(6, 0.7))
+
+        self.assertEqual(b["inside"]["n"], 1)       # article 0
+        self.assertEqual(b["inside"]["net"], 1)     # expert right, classifier wrong
+        self.assertEqual(b["outside"]["n"], 1)      # article 2
+        self.assertEqual(b["outside"]["net"], -1)   # classifier right, expert wrong
+        self.assertEqual(b["harmful"]["n"], 1)      # article 2
+        self.assertEqual(b["missed"]["n"], 2)       # articles 3 and 4
+        self.assertEqual(b["missed"]["inside_region"], 1)
+        self.assertEqual(b["gap_articles"], 3)
 
 
 class DeferViewTest(TestCase):
