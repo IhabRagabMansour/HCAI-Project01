@@ -3,6 +3,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from django.apps import apps
 from django.conf import settings
 from django.contrib.staticfiles import finders
 from django.test import SimpleTestCase, TestCase
@@ -21,16 +22,31 @@ class RootUrlTest(TestCase):
 
 
 _STATIC_TAG = re.compile(r"""{%\s*static\s+['"]([^'"]+)['"]""")
+_PACKAGE_DIRS = {"site-packages", "dist-packages"}
+
+
+def _is_installed_package(path: Path) -> bool:
+    return bool(_PACKAGE_DIRS.intersection(path.parts))
+
+
+def _project_template_dirs():
+    """Template folders of this project's own apps, never of installed packages.
+
+    Selected by where each app lives rather than by the virtualenv's folder name,
+    which people call venv, .venv, env or anything else, often inside the repo.
+    """
+    dirs = [Path(d) for d in settings.TEMPLATES[0].get("DIRS", [])]
+    dirs += [Path(config.path) / "templates" for config in apps.get_app_configs()
+             if not _is_installed_package(Path(config.path))]
+    return [d for d in dirs if d.is_dir()]
 
 
 def _static_references():
     """Every path passed to {% static %} in any template of the project."""
     refs = set()
-    base = Path(settings.BASE_DIR)
-    for template in base.glob("**/templates/**/*.html"):
-        if "venv" in template.parts:
-            continue
-        refs.update(_STATIC_TAG.findall(template.read_text(encoding="utf-8")))
+    for folder in _project_template_dirs():
+        for template in folder.glob("**/*.html"):
+            refs.update(_STATIC_TAG.findall(template.read_text(encoding="utf-8")))
     return sorted(refs)
 
 
@@ -55,8 +71,10 @@ class StaticAssetTest(SimpleTestCase):
         if not shutil.which("git") or not (base / ".git").exists():
             self.skipTest("not a git checkout")
 
-        paths = [Path(finders.find(ref)).relative_to(base).as_posix()
-                 for ref in _static_references() if finders.find(ref)]
+        found = [Path(finders.find(ref)) for ref in _static_references() if finders.find(ref)]
+        paths = [p.relative_to(base).as_posix() for p in found
+                 if p.is_relative_to(base) and not _is_installed_package(p)]
+        self.assertTrue(paths)
         result = subprocess.run(
             ["git", "check-ignore", "--stdin"], cwd=base, input="\n".join(paths),
             capture_output=True, text=True,
