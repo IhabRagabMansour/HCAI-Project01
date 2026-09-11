@@ -15,6 +15,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+# The Chart.js files served by the apps live in static/<app>/lib/ and must be
+# committed; the rule above would otherwise drop them from every clone.
+!project*/static/*/lib/
 lib64/
 parts/
 sdist/
