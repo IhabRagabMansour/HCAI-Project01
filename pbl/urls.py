@@ -23,6 +23,9 @@ from django.views.generic.base import RedirectView
 
 urlpatterns = [
     path("", RedirectView.as_view(pattern_name="home:index", permanent=False), name="root"),
+    # Browsers request /favicon.ico for responses that declare no icon (PDFs, JSON).
+    path("favicon.ico", RedirectView.as_view(
+        url=settings.STATIC_URL + "favicon/favicon.ico", permanent=True)),
     path("home/", include("home.urls")),
     path("admin/", admin.site.urls),
     path("demos/", include("demos.urls")),

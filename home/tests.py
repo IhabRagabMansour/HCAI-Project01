@@ -13,6 +13,12 @@ class RootUrlTest(TestCase):
         response = self.client.get("/")
         self.assertRedirects(response, "/home/", fetch_redirect_response=False)
 
+    def test_root_favicon_points_at_a_real_file(self):
+        response = self.client.get("/favicon.ico")
+        self.assertEqual(response.status_code, 301)
+        target = response["Location"].removeprefix(settings.STATIC_URL)
+        self.assertIsNotNone(finders.find(target))
+
 
 _STATIC_TAG = re.compile(r"""{%\s*static\s+['"]([^'"]+)['"]""")
 
